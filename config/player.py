@@ -23,6 +23,9 @@ class Player:
     sword_anim_index: int = 0
     sword_anim_timer: float = 0.0
     sword_anim_speed: float = 0.04 # seconds per sword frame
+    hp: int = 100
+    max_hp: int = 100
+    game_ref: object = None  # Reference to Game instance for damage overlay
 
     def start_sword_swing(self):
         start_sword_swing(self)
