@@ -64,7 +64,7 @@ class Game:
         }
         # Sword images
         self.sword_img = pygame.transform.scale(
-            pygame.image.load("textures/sword/sword.png").convert_alpha(), (40, 40)
+            pygame.image.load("textures/sword/sword.png").convert_alpha(), (80, 80)
         )
         self.sword_slash_imgs = [
             pygame.transform.scale(
