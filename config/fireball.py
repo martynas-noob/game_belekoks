@@ -1,7 +1,7 @@
 import pygame
 import math
 from dataclasses import dataclass
-from config.config import world_to_screen
+from config.config import world_to_screen, WIN_W, WIN_H, draw_light_mask
 
 
 @dataclass
@@ -33,6 +33,13 @@ class Fireball:
 
     def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float, img=None, explosion_imgs=None):
         px, py = world_to_screen(self.x, self.y, cam_x, cam_y)
+        # --- Fireball Glow ---
+        glow_radius = 80  # You can adjust this for desired glow size
+        fireball_center = (px, py)
+        # Draw glow (light mask) under the fireball
+        glow_mask = draw_light_mask(fireball_center, glow_radius)
+        surf.blit(glow_mask, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+
         if self.exploding and explosion_imgs:
             frame = min(self.explosion_frame, len(explosion_imgs) - 1)
             exp_img = explosion_imgs[frame]
