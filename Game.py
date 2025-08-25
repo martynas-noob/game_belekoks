@@ -74,6 +74,10 @@ class Game:
             )
             for i in range(1, 9)
         ]
+        self.sword_sound = pygame.mixer.Sound("textures/sword/sword_sound.mp3")
+        self.slime_damage_sound = pygame.mixer.Sound("textures/NPC/slime/slime_damage.mp3")
+        self.slime_moving_sound = pygame.mixer.Sound("textures/NPC/slime/slime_moving.mp3")
+        self.slime_death_sound = pygame.mixer.Sound("textures/NPC/slime/slime_death.mp3")
 
         # Game state
         self.player = Player(200, 200)
@@ -140,6 +144,7 @@ class Game:
                 self.player.start_sword_swing()
                 self.sword_swing_damage = random.randint(10, 15)
                 self.sword_swing_hit_targets = set()
+                self.sword_sound.play()
             self.player.update_sword(dt, len(self.sword_slash_imgs))
 
             # --- Sword damage to targets and enemies ---
@@ -173,7 +178,9 @@ class Game:
                         show_damage_numbers(self, enemy.x, enemy.y - 40, damage)
                         show_health_bar(self, enemy)
                         self.sword_swing_hit_targets.add(id(enemy))
+                        self.slime_damage_sound.play()
                         if enemy.hit_points <= 0:
+                            self.slime_death_sound.play()
                             enemies_to_remove.add(self.world.enemies.index(enemy))
             # Reset buffer only when animation ends
             if not self.player.sword_swinging:
@@ -216,19 +223,26 @@ class Game:
                 torch_center = None
 
             # Update enemies
+            slime_moving = False
             if torch_center is None:
-                # No torch/light: monsters go to the torch's last position
                 monster_target = self.torch_ground_pos
             elif self.player_near_torch():
-                # Player is near the torch: monsters go to the player
                 monster_target = (self.player.x, self.player.y)
             else:
-                # Player is in darkness: monsters go to the torch
                 monster_target = self.torch_ground_pos
 
             for enemy in self.world.enemies:
+                prev_x, prev_y = enemy.x, enemy.y
                 enemy.update(dt, monster_target, self.world.solids)
+                # Detect movement
+                if hasattr(enemy, "x") and hasattr(enemy, "y"):
+                    if (enemy.x != prev_x or enemy.y != prev_y):
+                        slime_moving = True
 
+            # Play slime moving sound if any slime moved and sound is not already playing
+            if slime_moving and not self.slime_moving_sound.get_num_channels():
+                self.slime_moving_sound.play()
+            
             # Update fireballs and handle collisions
             fireballs_to_remove = set()
             enemies_to_remove = set()
@@ -270,7 +284,9 @@ class Game:
                             enemy.hit_points -= damage
                             show_damage_numbers(self, enemy.x, enemy.y - 40, damage)
                             show_health_bar(self, enemy)
+                            self.slime_damage_sound.play()
                             if enemy.hit_points <= 0:
+                                self.slime_death_sound.play()
                                 enemies_to_remove.add(e_idx)
                         break
                 else:
@@ -342,12 +358,16 @@ class Game:
                 light_mask = draw_light_mask(torch_center, self.torch_glow_radius)
                 darkness.blit(light_mask, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
 
-            # Fireball glow
-            fireball_glow_radius = 80  # Adjust as desired
+            # Fireball and explosion glow
+            fireball_glow_radius = 80  # Normal fireball glow
+            explosion_glow_radius = 180  # Bigger explosion glow
             for fireball in self.fireballs:
-                if not fireball.exploding:
-                    fx, fy = world_to_screen(fireball.x, fireball.y, self.camera.x, self.camera.y)
-                    fireball_center = (int(fx), int(fy))
+                fx, fy = world_to_screen(fireball.x, fireball.y, self.camera.x, self.camera.y)
+                fireball_center = (int(fx), int(fy))
+                if fireball.exploding:
+                    explosion_light = draw_light_mask(fireball_center, explosion_glow_radius)
+                    darkness.blit(explosion_light, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+                else:
                     fireball_light = draw_light_mask(fireball_center, fireball_glow_radius)
                     darkness.blit(fireball_light, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
 
