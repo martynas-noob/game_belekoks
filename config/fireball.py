@@ -1,5 +1,6 @@
 import pygame
 import math
+import random
 from dataclasses import dataclass
 from config.config import world_to_screen, WIN_W, WIN_H, draw_light_mask
 
@@ -18,6 +19,13 @@ class Fireball:
     exploding: bool = False
     explosion_frame: int = 0
     explosion_timer: float = 0.0
+    damage: int = 0  # Add this line
+    damage_min: int = 10
+    damage_max: int = 15
+
+    def __post_init__(self):
+        if self.damage == 0:
+            self.damage = random.randint(self.damage_min, self.damage_max)
 
     def rect(self) -> pygame.Rect:
         return pygame.Rect(

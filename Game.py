@@ -4,6 +4,7 @@ import sys
 import warnings
 import pygame
 import os
+import random
 
 from config.config import (
     WIN_W, WIN_H, FPS, LEVEL_1, COL_BG, world_to_screen
@@ -15,6 +16,7 @@ from config.target import Target
 from config.world import World
 from config.camera import Camera
 from config.utils import draw_light_mask
+from config.combat import show_damage_numbers, draw_damage_numbers, show_health_bar, update_health_bars, draw_health_bars
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -76,6 +78,8 @@ class Game:
         self.torch_pickup_cooldown = 0.0
         self.last_t_press_time = 0
         self.t_press_count = 0
+        self.damage_numbers = []
+        self.target_health_bars = {}
 
     def run(self):
         running = True
@@ -141,7 +145,8 @@ class Game:
                 dx, dy = self.player.last_dir
                 if dx != 0 or dy != 0:
                     facing_left = dx < 0
-                    self.fireballs.append(Fireball(self.player.x, self.player.y, dx, dy, facing_left=facing_left))
+                    fireball = Fireball(self.player.x, self.player.y, dx, dy, facing_left=facing_left)
+                    self.fireballs.append(fireball)
                     self.cast_sound.play()
 
             # --- Calculate torch_center before using it ---
@@ -208,8 +213,16 @@ class Game:
                             if not fireball.exploding:
                                 fireball.exploding = True
                                 self.explosion_sound.play()
-                            target.respawn_timer = 5.0
-                            self.world.remove_target_solid(target)
+                            # Deal random damage between 10 and 15
+                            damage = random.randint(10, 15)
+                            target.hit_points -= damage
+                            # --- Add damage number effect ---
+                            show_damage_numbers(self, target.x, target.y - 40, fireball.damage)
+                            show_health_bar(self, target)
+                            if target.hit_points <= 0:
+                                target.respawn_timer = 5.0
+                                self.world.remove_target_solid(target)
+                                target.hit_points = 300  # Reset HP for respawn
                             break
 
             self.fireballs = [f for i, f in enumerate(self.fireballs) if i not in fireballs_to_remove]
@@ -235,6 +248,9 @@ class Game:
                 target.draw(self.screen, self.camera.x, self.camera.y)
             for fireball in self.fireballs:
                 fireball.draw(self.screen, self.camera.x, self.camera.y, self.fireball_img, self.explosion_imgs)
+            draw_damage_numbers(self, self.screen, self.camera, dt)
+            draw_health_bars(self, self.screen, self.camera)
+            update_health_bars(self, dt)
 
             # Draw player animation
             player_px, player_py = world_to_screen(self.player.x - 40, self.player.y - 60, self.camera.x, self.camera.y)
@@ -268,10 +284,20 @@ class Game:
             world_my = my + self.camera.y
             self.player.update_direction_towards(world_mx, world_my)
 
+            # Update health bars each frame
+            update_health_bars(self, dt)
+            # Draw health bars for targets
+            draw_health_bars(self, self.screen, self.camera)
+
     def player_near_torch(self, distance=100):
         px, py = self.player.x, self.player.y
         tx, ty = self.torch_ground_pos
         return math.hypot(px - tx, py - ty) < distance
+
+    def show_health_bars(self):
+        for target in self.world.targets:
+            if target.respawn_timer <= 0:
+                show_health_bar(self, target)
 
 if __name__ == "__main__":
     Game().run()
