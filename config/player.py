@@ -42,12 +42,6 @@ class Player:
         dx, dy, mult = self.input_dir(keys)
         step = self.speed * mult * dt
         self.moving = (dx != 0 or dy != 0)
-        # Determine animation direction
-        if self.moving:
-            if abs(dx) > abs(dy):
-                self.anim_dir = "left" if dx < 0 else "right"
-            else:
-                self.anim_dir = "forward" if dy > 0 else "back"
         # X axis
         self.x += dx * step
         r = self.rect()
@@ -68,15 +62,8 @@ class Player:
                 elif dy < 0:
                     r.top = s.bottom
         self.y = r.centery
-        # Update last_dir and facing_left if moving
-        if dx != 0 or dy != 0:
-            self.last_dir = (dx, dy)
-            if dx < 0:
-                self.facing_left = True
-            elif dx > 0:
-                self.facing_left = False
 
-        # Update animation frame
+        # Animation frame logic (optional, keep as before)
         if self.moving:
             self.anim_timer += dt
             if self.anim_timer >= self.anim_speed:
@@ -94,7 +81,13 @@ class Player:
             dx /= mag
             dy /= mag
             self.last_dir = (dx, dy)
+            # Set facing_left for left/right animation
             if dx < 0:
                 self.facing_left = True
             elif dx > 0:
                 self.facing_left = False
+            # Set anim_dir for up/down/left/right animation
+            if abs(dx) > abs(dy):
+                self.anim_dir = "left" if dx < 0 else "right"
+            else:
+                self.anim_dir = "forward" if dy > 0 else "back"
