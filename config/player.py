@@ -4,6 +4,50 @@ from dataclasses import dataclass
 
 @dataclass
 class Player:
+    def start_sword_swing(self):
+        if not self.sword_swinging:
+            self.sword_swinging = True
+            self.sword_anim_index = 0
+            self.sword_anim_timer = 0.0
+
+    def update_sword(self, dt: float, sword_anim_len: int):
+        if self.sword_swinging:
+            self.sword_anim_timer += dt
+            if self.sword_anim_timer >= self.sword_anim_speed:
+                self.sword_anim_timer = 0.0
+                self.sword_anim_index += 1
+                if self.sword_anim_index >= sword_anim_len:
+                    self.sword_swinging = False
+                    self.sword_anim_index = 0
+
+    def draw_with_sword(self, surf, px, py, player_img, sword_img, sword_slash_imgs):
+        # Always use the same size for sword (idle and swinging)
+        SWORD_DRAW_SIZE = (48, 48)  # 40% smaller than original (80, 80)
+
+        # Draw sword (behind or in front depending on facing)
+        if self.sword_swinging and sword_slash_imgs:
+            sword_frame = min(self.sword_anim_index, len(sword_slash_imgs)-1)
+            sword_anim_img = sword_slash_imgs[sword_frame]
+            # Scale sword slash frame to idle sword size
+            if sword_anim_img.get_size() != SWORD_DRAW_SIZE:
+                sword_anim_img = pygame.transform.scale(sword_anim_img, SWORD_DRAW_SIZE)
+            offset_x = -20 if self.facing_left else 20
+            offset_y = 10
+            if self.facing_left:
+                sword_anim_img = pygame.transform.flip(sword_anim_img, True, False)
+            surf.blit(player_img, (px, py))
+            surf.blit(sword_anim_img, (px + offset_x, py + offset_y))
+        else:
+            # Idle sword
+            draw_sword_img = sword_img
+            if sword_img.get_size() != SWORD_DRAW_SIZE:
+                draw_sword_img = pygame.transform.scale(sword_img, SWORD_DRAW_SIZE)
+            if self.facing_left:
+                draw_sword_img = pygame.transform.flip(draw_sword_img, True, False)
+            offset_x = -20 if self.facing_left else 20
+            offset_y = 10
+            surf.blit(player_img, (px, py))
+            surf.blit(draw_sword_img, (px + offset_x, py + offset_y))
     x: float
     y: float
     w: int = 28
@@ -17,6 +61,11 @@ class Player:
     anim_index: int = 0
     anim_timer: float = 0.0
     anim_speed: float = 0.12  # seconds per frame
+    # Sword state
+    sword_swinging: bool = False
+    sword_anim_index: int = 0
+    sword_anim_timer: float = 0.0
+    sword_anim_speed: float = 0.03  # seconds per sword frame
 
     def rect(self) -> pygame.Rect:
         return pygame.Rect(int(self.x - self.w/2), int(self.y - self.h/2), self.w, self.h)

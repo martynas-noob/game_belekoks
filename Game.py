@@ -64,6 +64,16 @@ class Game:
             "right":   [pygame.transform.scale(pygame.image.load(f"textures/player_movement/right{i}.png").convert_alpha(), (40, 60)) for i in range(1, 9)],
             "left":    [pygame.transform.scale(pygame.image.load(f"textures/player_movement/left{i}.png").convert_alpha(), (40, 60)) for i in range(1, 9)],
         }
+        # Sword images
+        self.sword_img = pygame.transform.scale(
+            pygame.image.load("textures/sword/sword.png").convert_alpha(), (80, 80)
+        )
+        self.sword_slash_imgs = [
+            pygame.transform.scale(
+                pygame.image.load(f"textures/sword/sword_slash{i}.png").convert_alpha(), (60, 60)
+            )
+            for i in range(1, 9)
+        ]
 
         # Game state
         self.player = Player(200, 200)
@@ -86,6 +96,7 @@ class Game:
         while running:
             dt = self.clock.tick(FPS) / 1000.0
             shoot_fireball = False
+            sword_swing = False
 
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
@@ -115,10 +126,17 @@ class Game:
                                 self.t_press_count = 0
                                 self.torch_pickup_cooldown = 0.3
                                 self.torch_following = True  # Start following the player
+                elif e.type == pygame.MOUSEBUTTONDOWN:
+                    if e.button == 1:  # Left mouse button
+                        sword_swing = True
             keys = pygame.key.get_pressed()
             # Player movement
             enemy_solids = [e.draw_enemy() for e in self.world.enemies]
             self.player.move_and_collide(dt, self.world.solids + enemy_solids)
+            # Sword swing logic
+            if sword_swing:
+                self.player.start_sword_swing()
+            self.player.update_sword(dt, len(self.sword_slash_imgs))
 
             # Torch follow logic
             if self.torch_following:
@@ -252,12 +270,12 @@ class Game:
             draw_health_bars(self, self.screen, self.camera)
             update_health_bars(self, dt)
 
-            # Draw player animation
+            # Draw player with sword
             player_px, player_py = world_to_screen(self.player.x - 40, self.player.y - 60, self.camera.x, self.camera.y)
             anim_dir = self.player.anim_dir
             frame = self.player.anim_index
             player_img = self.player_anim_frames[anim_dir][frame]
-            self.screen.blit(player_img, (player_px, player_py))
+            self.player.draw_with_sword(self.screen, player_px, player_py, player_img, self.sword_img, self.sword_slash_imgs)
 
             # Torch drawing and glow
             if self.torch_on_ground or self.torch_following:
