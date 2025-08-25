@@ -337,9 +337,19 @@ class Game:
             darkness = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
             darkness.fill((0, 0, 0, self.darkness_alpha))
 
+            # Torch glow
             if torch_center:
                 light_mask = draw_light_mask(torch_center, self.torch_glow_radius)
                 darkness.blit(light_mask, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+
+            # Fireball glow
+            fireball_glow_radius = 80  # Adjust as desired
+            for fireball in self.fireballs:
+                if not fireball.exploding:
+                    fx, fy = world_to_screen(fireball.x, fireball.y, self.camera.x, self.camera.y)
+                    fireball_center = (int(fx), int(fy))
+                    fireball_light = draw_light_mask(fireball_center, fireball_glow_radius)
+                    darkness.blit(fireball_light, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
 
             self.screen.blit(darkness, (0, 0))
 
