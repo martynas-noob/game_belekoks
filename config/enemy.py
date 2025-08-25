@@ -14,6 +14,8 @@ class Enemy:
     cooldown: float = 0.0
     img: pygame.Surface = None
     facing_left: bool = False
+    hit_points: int = 100  # or 300 to match targets
+    respawn_timer: float = 0.0
 
     def draw_enemy(self) -> pygame.Rect:
         return pygame.Rect(int(self.x - self.w/2), int(self.y - self.h/2), self.w, self.h)

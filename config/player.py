@@ -22,7 +22,7 @@ class Player:
     sword_swinging: bool = False
     sword_anim_index: int = 0
     sword_anim_timer: float = 0.0
-    sword_anim_speed: float = 0.03  # seconds per sword frame
+    sword_anim_speed: float = 0.04 # seconds per sword frame
 
     def start_sword_swing(self):
         start_sword_swing(self)
@@ -106,3 +106,14 @@ class Player:
                 self.anim_dir = "left" if dx < 0 else "right"
             else:
                 self.anim_dir = "forward" if dy > 0 else "back"
+
+    def get_sword_rect(self):
+        # Sword size and offset must match draw_with_sword in mili.py
+        SWORD_DRAW_SIZE = (48, 48)
+        offset_x = -20 if self.facing_left else 20
+        offset_y = 10
+        px = self.x - 40  # match world_to_screen offset in Game.py
+        py = self.y - 60
+        sword_x = px + offset_x + 40  # +40 to undo px offset
+        sword_y = py + offset_y + 60  # +60 to undo py offset
+        return pygame.Rect(int(sword_x), int(sword_y), SWORD_DRAW_SIZE[0], SWORD_DRAW_SIZE[1])

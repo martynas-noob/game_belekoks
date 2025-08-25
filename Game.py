@@ -90,6 +90,8 @@ class Game:
         self.t_press_count = 0
         self.damage_numbers = []
         self.target_health_bars = {}
+        self.sword_swing_damage = None
+        self.sword_swing_hit_targets = set()
 
     def run(self):
         running = True
@@ -134,10 +136,49 @@ class Game:
             enemy_solids = [e.draw_enemy() for e in self.world.enemies]
             self.player.move_and_collide(dt, self.world.solids + enemy_solids)
             # Sword swing logic
-            if sword_swing:
+            if sword_swing and not self.player.sword_swinging:
                 self.player.start_sword_swing()
+                self.sword_swing_damage = random.randint(10, 15)
+                self.sword_swing_hit_targets = set()
             self.player.update_sword(dt, len(self.sword_slash_imgs))
 
+            # --- Sword damage to targets and enemies ---
+            if self.player.sword_swinging:
+                sword_rect = self.player.get_sword_rect()
+                # Targets
+                for target in self.world.targets:
+                    if (
+                        target.respawn_timer <= 0
+                        and sword_rect.colliderect(target.rect())
+                        and id(target) not in self.sword_swing_hit_targets
+                    ):
+                        damage = self.sword_swing_damage if self.sword_swing_damage is not None else random.randint(10, 15)
+                        target.hit_points -= damage
+                        show_damage_numbers(self, target.x, target.y - 40, damage)
+                        show_health_bar(self, target)
+                        self.sword_swing_hit_targets.add(id(target))
+                        if target.hit_points <= 0:
+                            target.respawn_timer = 5.0
+                            self.world.remove_target_solid(target)
+                            target.hit_points = 300  # Reset HP for respawn
+                # Enemies
+                for enemy in self.world.enemies:
+                    if (
+                        hasattr(enemy, "hit_points")
+                        and sword_rect.colliderect(enemy.draw_enemy())
+                        and id(enemy) not in self.sword_swing_hit_targets
+                    ):
+                        damage = self.sword_swing_damage if self.sword_swing_damage is not None else random.randint(10, 15)
+                        enemy.hit_points -= damage
+                        show_damage_numbers(self, enemy.x, enemy.y - 40, damage)
+                        show_health_bar(self, enemy)
+                        self.sword_swing_hit_targets.add(id(enemy))
+                        if enemy.hit_points <= 0:
+                            enemies_to_remove.add(self.world.enemies.index(enemy))
+            # Reset buffer only when animation ends
+            if not self.player.sword_swinging:
+                self.sword_swing_damage = None
+                self.sword_swing_hit_targets = set()
             # Torch follow logic
             if self.torch_following:
                 tx, ty = self.torch_ground_pos
@@ -223,7 +264,14 @@ class Game:
                         if not fireball.exploding:
                             fireball.exploding = True
                             self.explosion_sound.play()
-                        enemies_to_remove.add(e_idx)
+                        # Deal random damage between 10 and 15
+                        damage = random.randint(10, 15)
+                        if hasattr(enemy, "hit_points"):
+                            enemy.hit_points -= damage
+                            show_damage_numbers(self, enemy.x, enemy.y - 40, damage)
+                            show_health_bar(self, enemy)
+                            if enemy.hit_points <= 0:
+                                enemies_to_remove.add(e_idx)
                         break
                 else:
                     for t_idx, target in enumerate(self.world.targets):
