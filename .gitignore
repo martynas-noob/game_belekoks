@@ -70,7 +70,6 @@ venv.bak/
 *.log
 
 # Images, assets, and binaries (optional, if not tracked)
-*.png
 *.jpg
 *.jpeg
 *.bmp
