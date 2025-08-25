@@ -22,7 +22,7 @@ class Player:
 
     def draw_with_sword(self, surf, px, py, player_img, sword_img, sword_slash_imgs):
         # Always use the same size for sword (idle and swinging)
-        SWORD_DRAW_SIZE = (80, 80)  # Use the idle sword size
+        SWORD_DRAW_SIZE = (48, 48)  # 40% smaller than original (80, 80)
 
         # Draw sword (behind or in front depending on facing)
         if self.sword_swinging and sword_slash_imgs:
@@ -31,8 +31,8 @@ class Player:
             # Scale sword slash frame to idle sword size
             if sword_anim_img.get_size() != SWORD_DRAW_SIZE:
                 sword_anim_img = pygame.transform.scale(sword_anim_img, SWORD_DRAW_SIZE)
-            offset_x = -45 if self.facing_left else 20
-            offset_y = 0
+            offset_x = -20 if self.facing_left else 20
+            offset_y = 10
             if self.facing_left:
                 sword_anim_img = pygame.transform.flip(sword_anim_img, True, False)
             surf.blit(player_img, (px, py))
@@ -44,8 +44,8 @@ class Player:
                 draw_sword_img = pygame.transform.scale(sword_img, SWORD_DRAW_SIZE)
             if self.facing_left:
                 draw_sword_img = pygame.transform.flip(draw_sword_img, True, False)
-            offset_x = -45 if self.facing_left else 20
-            offset_y = 0
+            offset_x = -20 if self.facing_left else 20
+            offset_y = 10
             surf.blit(player_img, (px, py))
             surf.blit(draw_sword_img, (px + offset_x, py + offset_y))
     x: float
