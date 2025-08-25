@@ -20,6 +20,7 @@ class Enemy:
     attack_damage: int = 10
     attack_cooldown: float = 1.0
     attack_timer: float = 1.0
+    visibility_range: int = 240  # Add this attribute for visibility range
 
     def draw_enemy(self) -> pygame.Rect:
         return pygame.Rect(int(self.x - self.w/2), int(self.y - self.h/2), self.w, self.h)
@@ -43,11 +44,21 @@ class Enemy:
         dist = math.hypot(self.x - player_x, self.y - player_y)
         return dist < self.attack_range and self.attack_timer <= 0
 
+    def sees_target(self, target_x, target_y) -> bool:
+        """Return True if target is within visibility range."""
+        dist = math.hypot(self.x - target_x, self.y - target_y)
+        return dist <= self.visibility_range
+
     def update(self, dt: float, target_pos, solids: list[pygame.Rect], player_rect: pygame.Rect, other_enemies: list[pygame.Rect], player=None):
         if self.cooldown > 0:
             self.cooldown -= dt
             return
-        dx, dy = target_pos[0] - self.x, target_pos[1] - self.y
+        # --- AGGRO LOGIC ---
+        # Only chase player if within visibility range, ignore torch by default
+        chase_pos = target_pos
+        if player is not None and self.sees_target(player.x, player.y):
+            chase_pos = (player.x, player.y)
+        dx, dy = chase_pos[0] - self.x, chase_pos[1] - self.y
         if dx < 0:
             self.facing_left = True
         elif dx > 0:

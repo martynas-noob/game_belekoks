@@ -111,14 +111,20 @@ class Game:
         self.world = World(LEVEL_1, self.enemy_imgs, self.target_imgs)
         self.fireballs = []
         self.torch_on_ground = True
-        # Place torch 60 pixels to the right of the player
+        self.torch_following = False
         self.torch_ground_pos = (self.player.x + 60, self.player.y)
-        self.torch_following = False  # Add this line
-        self.torch_glow_radius = 220
-        self.darkness_alpha = 200
-        self.torch_pickup_cooldown = 0.0
-        self.last_t_press_time = 0
-        self.t_press_count = 0
+        self.torch_glow_radius = 220  # <-- Restore this line
+        # Torch movement attributes
+        self.torch_vel_x = random.choice([-1, 1]) * 80.0  # pixels/sec
+        self.torch_vel_y = random.choice([-1, 1]) * 80.0
+        self.torch_move_timer = 0.0
+        # Torch wiggle animation
+        self.torch_wiggle_timer = 0.0
+        self.torch_wiggle_offset = (0, 0)
+        self.darkness_alpha = 200  # <-- Add this line
+        self.last_t_press_time = 0  # <-- Add this line
+        self.torch_pickup_cooldown = 0.0  # <-- Add this line
+        self.t_press_count = 0  # <-- Add this if not present
         self.damage_numbers = []
         self.target_health_bars = {}
         self.sword_swing_damage = None
@@ -167,6 +173,10 @@ class Game:
             shoot_fireball = False
             sword_swing = False
 
+            # --- Torch pickup cooldown decrement ---
+            if self.torch_pickup_cooldown > 0:
+                self.torch_pickup_cooldown -= dt
+
             # --- Game Over Check ---
             if self.player.hp <= 0:
                 game_over = True
@@ -200,24 +210,25 @@ class Game:
                             shoot_fireball = True
                         elif e.key == pygame.K_t:
                             now = pygame.time.get_ticks()
-                            if not self.torch_on_ground:
-                                self.torch_on_ground = True
-                                self.torch_ground_pos = (self.player.x, self.player.y)
-                                self.torch_pickup_cooldown = 0.3
-                                self.t_press_count = 0
-                                self.torch_following = False  # Stop following when dropped
+                            if now - self.last_t_press_time < 400:
+                                self.t_press_count += 1
                             else:
-                                # Torch is on ground: check for double-tap within 400ms
-                                if now - self.last_t_press_time < 400:
-                                    self.t_press_count += 1
-                                else:
-                                    self.t_press_count = 1
-                                self.last_t_press_time = now
-                                if self.t_press_count == 2 and self.torch_pickup_cooldown <= 0:
-                                    self.torch_on_ground = False
-                                    self.t_press_count = 0
-                                    self.torch_pickup_cooldown = 0.3
-                                    self.torch_following = True  # Start following the player
+                                self.t_press_count = 1
+                            self.last_t_press_time = now
+                            # Double-tap T: torch follows player
+                            if self.t_press_count == 2 and self.torch_pickup_cooldown <= 0 and self.torch_on_ground:
+                                self.torch_following = True
+                                self.torch_on_ground = False
+                                self.torch_pickup_cooldown = 0.3
+                                self.torch_vel_x = 0
+                                self.torch_vel_y = 0
+                            # Single-tap T: drop torch at its current location (only if following)
+                            elif self.t_press_count == 1 and self.torch_pickup_cooldown <= 0 and self.torch_following:
+                                self.torch_on_ground = True
+                                self.torch_following = False
+                                self.torch_pickup_cooldown = 0.3
+                                self.torch_vel_x = random.choice([-1, 1]) * 80.0
+                                self.torch_vel_y = random.choice([-1, 1]) * 80.0
                     elif e.type == pygame.MOUSEBUTTONDOWN:
                         if e.button == 1:  # Left mouse button
                             sword_swing = True
@@ -437,7 +448,11 @@ class Game:
 
             # Draw torch sprite
             if self.torch_on_ground or self.torch_following:
-                torch_px, torch_py = world_to_screen(self.torch_ground_pos[0] - 15, self.torch_ground_pos[1] - 30, self.camera.x, self.camera.y)
+                torch_px, torch_py = world_to_screen(
+                    self.torch_ground_pos[0] - 15 + self.torch_wiggle_offset[0],
+                    self.torch_ground_pos[1] - 30 + self.torch_wiggle_offset[1],
+                    self.camera.x, self.camera.y
+                )
                 self.screen.blit(self.torch_img, (torch_px, torch_py))
 
             # Draw fireball sprites
@@ -449,7 +464,8 @@ class Game:
 
             # Player hitbox (circle, blue)
             player_px, player_py = world_to_screen(self.player_body.position[0], self.player_body.position[1], self.camera.x, self.camera.y)
-            pygame.draw.circle(self.screen, (0, 0, 255), (int(player_px), int(player_py)), int(self.player_shape.radius), 2)
+            # Draw filled circle for player hitbox
+            pygame.draw.circle(self.screen, (0, 0, 255), (int(player_px), int(player_py)), int(self.player_shape.radius))
             # Player HP overlay (white, matches damage overlay)
             pygame.draw.circle(self.screen, (255, 255, 255), (int(player_px), int(player_py)), int(self.player_shape.radius) - 4, 2)
 
@@ -467,10 +483,17 @@ class Game:
                     dot_x = int(ex + math.cos(rad) * attack_range)
                     dot_y = int(ey + math.sin(rad) * attack_range)
                     pygame.draw.circle(self.screen, (200, 200, 200), (dot_x, dot_y), 3)
+                # Draw enemy visibility range (thin yellow circle)
+                visibility_range = getattr(self.world.enemies[i], "visibility_range", 240)
+                pygame.draw.circle(self.screen, (255, 255, 0), (int(ex), int(ey)), int(visibility_range), 1)
 
             # Torch hitbox (rect, purple)
             if self.torch_on_ground or self.torch_following:
-                torch_px, torch_py = world_to_screen(self.torch_ground_pos[0], self.torch_ground_pos[1], self.camera.x, self.camera.y)
+                torch_px, torch_py = world_to_screen(
+                    self.torch_ground_pos[0] + self.torch_wiggle_offset[0],
+                    self.torch_ground_pos[1] + self.torch_wiggle_offset[1],
+                    self.camera.x, self.camera.y
+                )
                 torch_rect = pygame.Rect(int(torch_px - 8), int(torch_py - 16), 16, 32)
                 pygame.draw.rect(self.screen, (128, 0, 128), torch_rect, 2)
 
@@ -541,7 +564,11 @@ class Game:
             # Torch glow
             # FIX: Ensure torch_center is defined before use
             if self.torch_on_ground or self.torch_following:
-                torch_px, torch_py = world_to_screen(self.torch_ground_pos[0] - 15, self.torch_ground_pos[1] - 30, self.camera.x, self.camera.y)
+                torch_px, torch_py = world_to_screen(
+                    self.torch_ground_pos[0] - 15 + self.torch_wiggle_offset[0],
+                    self.torch_ground_pos[1] - 30 + self.torch_wiggle_offset[1],
+                    self.camera.x, self.camera.y
+                )
                 torch_center = (torch_px + 15, torch_py + 30)
             else:
                 torch_center = None
@@ -604,7 +631,11 @@ class Game:
             # --- Enemy movement and attack ---
             slime_moving = False
             if self.torch_on_ground or self.torch_following:
-                torch_px, torch_py = world_to_screen(self.torch_ground_pos[0] - 15, self.torch_ground_pos[1] - 30, self.camera.x, self.camera.y)
+                torch_px, torch_py = world_to_screen(
+                    self.torch_ground_pos[0] - 15 + self.torch_wiggle_offset[0],
+                    self.torch_ground_pos[1] - 30 + self.torch_wiggle_offset[1],
+                    self.camera.x, self.camera.y
+                )
                 torch_center = (torch_px + 15, torch_py + 30)
             else:
                 torch_center = None
@@ -648,17 +679,94 @@ class Game:
             text_surf = font.render(hp_text, True, (255, 255, 255))
             self.screen.blit(text_surf, (bar_x + 12, bar_y + big_hp_bar_height // 2 - text_surf.get_height() // 2))
 
-    def player_near_torch(self, distance=100):
-        px, py = self.player.x, self.player.y
-        tx, ty = self.torch_ground_pos
-        return math.hypot(px - tx, py - ty) < distance
+            # --- Torch movement and wiggle logic ---
+            if self.torch_following:
+                # Smoothly move torch toward player, but cap movement per frame
+                px, py = self.player.x, self.player.y
+                tx, ty = self.torch_ground_pos
+                dx = px - tx
+                dy = py - ty
+                dist = math.hypot(dx, dy)
+                max_step = 320 * dt  # torch max speed (pixels/sec)
+                if dist > 0.5:
+                    step = min(dist, max_step)
+                    move_x = dx / dist * step
+                    move_y = dy / dist * step
+                    # Calculate next position
+                    next_tx = tx + move_x
+                    next_ty = ty + move_y
+                    torch_rect = pygame.Rect(int(next_tx - 8), int(next_ty - 16), 16, 32)
+                    player_rect = self.player.rect()
+                    # Prevent torch from entering player's hitbox in follow mode
+                    if torch_rect.colliderect(player_rect):
+                        # Do not update torch position if it would collide
+                        pass
+                    else:
+                        self.torch_ground_pos = (next_tx, next_ty)
+                # Wiggle animation: update 8 times per second
+                self.torch_wiggle_timer += dt
+                if self.torch_wiggle_timer >= 0.125:
+                    self.torch_wiggle_timer = 0.0
+                    wiggle_x = random.randint(-4, 4)
+                    wiggle_y = random.randint(-4, 4)
+                    self.torch_wiggle_offset = (wiggle_x, wiggle_y)
+            elif self.torch_on_ground:
+                # Torch moves on its own when on ground
+                self.torch_move_timer += dt
+                if self.torch_move_timer > 2.0:
+                    self.torch_move_timer = 0.0
+                    self.torch_vel_x += random.uniform(-40, 40)
+                    self.torch_vel_y += random.uniform(-40, 40)
+                    speed = math.hypot(self.torch_vel_x, self.torch_vel_y)
+                    max_speed = 120.0
+                    if speed > max_speed:
+                        self.torch_vel_x *= max_speed / speed
+                        self.torch_vel_y *= max_speed / speed
+                orig_tx, orig_ty = self.torch_ground_pos
+                tx = orig_tx + self.torch_vel_x * dt
+                ty = orig_ty + self.torch_vel_y * dt
+                torch_rect = pygame.Rect(int(tx - 8), int(ty - 16), 16, 32)
+                collided = False
+                # Check collision with walls
+                for wall in self.world.solids:
+                    if torch_rect.colliderect(wall):
+                        collided = True
+                        break
+                # Prevent torch from entering player's hitbox (rect)
+                player_rect = self.player.rect()
+                if torch_rect.colliderect(player_rect):
+                    collided = True
+                    # Move torch back to previous position and bounce away
+                    # Calculate direction away from player center
+                    away_dx = tx - self.player.x
+                    away_dy = ty - self.player.y
+                    away_dist = math.hypot(away_dx, away_dy)
+                    if away_dist > 0:
+                        # Push torch away by the minimum amount to be outside player hitbox
+                        push_strength = max(self.player.w, self.player.h) // 2 + 8
+                        tx = self.player.x + (away_dx / away_dist) * (push_strength + 2)
+                        ty = self.player.y + (away_dy / away_dist) * (push_strength + 2)
+                    else:
+                        # If exactly overlapping, move torch directly up
+                        ty = self.player.y - (self.player.h // 2 + 8)
+                if not collided:
+                    self.torch_ground_pos = (tx, ty)
+                else:
+                    self.torch_ground_pos = (tx, ty)
+                    self.torch_vel_x = -self.torch_vel_x * 0.8
+                    self.torch_vel_y = -self.torch_vel_y * 0.8
 
-    def show_health_bars(self):
-        for target in self.world.targets:
-            if target.respawn_timer <= 0:
-                show_health_bar(self, target)
-        # Remove the enemy damage loop from here, it should NOT be inside show_health_bars
-        # ...existing code...
+    def player_near_torch(self):
+        if self.torch_on_ground or self.torch_following:
+            torch_px, torch_py = world_to_screen(
+                self.torch_ground_pos[0] - 15 + self.torch_wiggle_offset[0],
+                self.torch_ground_pos[1] - 30 + self.torch_wiggle_offset[1],
+                self.camera.x, self.camera.y
+            )
+            torch_center = (torch_px + 15, torch_py + 30)
+            dist = math.hypot(self.player.x - torch_center[0], self.player.y - torch_center[1])
+            return dist < 100  # Considered near if within 100 pixels
+        return False
 
 if __name__ == "__main__":
     Game().run()
