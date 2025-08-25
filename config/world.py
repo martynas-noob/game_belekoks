@@ -4,9 +4,10 @@ from config.config import MAP_CHARS, TILE_SIZE
 from config.enemy import Enemy
 from config.target import Target
 import math
+import random
 
 class World:
-    def __init__(self, layout: list[str], monster_img: pygame.Surface, target_img: pygame.Surface):
+    def __init__(self, layout: list[str], enemy_imgs: list, target_imgs: list):
         self.layout = layout
         self.w = len(layout[0])
         self.h = len(layout)
@@ -18,15 +19,18 @@ class World:
                 if MAP_CHARS.get(ch, 0) == 1:
                     self.solids.append(pygame.Rect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE))
                 elif MAP_CHARS.get(ch, 0) == 2:
-                    img = pygame.transform.scale(monster_img, (40, 60)).convert_alpha()
+                    img = random.choice(enemy_imgs)
+                    img = pygame.transform.scale(img, (40, 60)).convert_alpha()
                     self.enemies.append(Enemy(x*TILE_SIZE+TILE_SIZE/2, y*TILE_SIZE+TILE_SIZE/2, 28, 36, img=img))
                 elif MAP_CHARS.get(ch, 0) == 3:
+                    img = random.choice(enemy_imgs)
+                    img = pygame.transform.scale(img, (int(40*1.5), int(60*1.5))).convert_alpha()
                     new_w = int(28 * 1.5)
                     new_h = int(36 * 1.5)
-                    img = pygame.transform.scale(monster_img, (int(40*1.5), int(60*1.5))).convert_alpha()
                     self.enemies.append(Enemy(x*TILE_SIZE+TILE_SIZE/2, y*TILE_SIZE+TILE_SIZE/2, new_w, new_h, img=img))
                 elif MAP_CHARS.get(ch, 0) == 4:
-                    img = pygame.transform.scale(target_img, (40, 60)).convert_alpha()
+                    img = random.choice(target_imgs)
+                    img = pygame.transform.scale(img, (40, 60)).convert_alpha()
                     tx = x*TILE_SIZE+TILE_SIZE/2
                     ty = y*TILE_SIZE+TILE_SIZE/2
                     self.targets.append(Target(tx, ty, 40, 60, img=img))

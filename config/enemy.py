@@ -16,6 +16,10 @@ class Enemy:
     facing_left: bool = False
     hit_points: int = 100  # or 300 to match targets
     respawn_timer: float = 0.0
+    attack_range: int = 80
+    attack_damage: int = 10
+    attack_cooldown: float = 1.0
+    attack_timer: float = 1.0
 
     def draw_enemy(self) -> pygame.Rect:
         return pygame.Rect(int(self.x - self.w/2), int(self.y - self.h/2), self.w, self.h)
@@ -23,14 +27,23 @@ class Enemy:
     def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float):
         px, py = world_to_screen(self.x, self.y, cam_x, cam_y)
         image = self.img
-        if image:
-            draw_img = pygame.transform.flip(image, True, False) if self.facing_left else image
-            surf.blit(draw_img, (px - image.get_width() // 2, py - image.get_height() // 2))
+        # Fix: Ensure image is a pygame.Surface and not a list or None
+        if isinstance(image, list):
+            image = image[0]
+        if isinstance(image, pygame.Surface):
+            # Use self.w and self.h for correct scaling
+            draw_img = pygame.transform.scale(image, (self.w, self.h))
+            draw_img = pygame.transform.flip(draw_img, True, False) if self.facing_left else draw_img
+            surf.blit(draw_img, (px - self.w // 2, py - self.h // 2))
         else:
             rect = pygame.Rect(px - self.w // 2, py - self.h // 2, self.w, self.h)
             pygame.draw.rect(surf, (200, 70, 70), rect, border_radius=6)
 
-    def update(self, dt: float, target_pos, solids: list[pygame.Rect]):
+    def can_attack_player(self, player_x, player_y) -> bool:
+        dist = math.hypot(self.x - player_x, self.y - player_y)
+        return dist < self.attack_range and self.attack_timer <= 0
+
+    def update(self, dt: float, target_pos, solids: list[pygame.Rect], player_rect: pygame.Rect, other_enemies: list[pygame.Rect], player=None):
         if self.cooldown > 0:
             self.cooldown -= dt
             return
@@ -43,21 +56,48 @@ class Enemy:
         if dist > 1:
             dx, dy = dx/dist, dy/dist
         step = self.speed * dt
+
+        # Save original position
+        orig_x, orig_y = self.x, self.y
+
+        # X axis
         self.x += dx * step
         r = self.draw_enemy()
+        collided = False
         for s in solids:
             if r.colliderect(s):
-                if dx > 0:
-                    r.right = s.left
-                elif dx < 0:
-                    r.left = s.right
-        self.x = r.centerx
+                collided = True
+        if player_rect and r.colliderect(player_rect):
+            collided = True
+        for e_rect in other_enemies:
+            if r.colliderect(e_rect):
+                collided = True
+        if collided:
+            self.x = orig_x  # revert
+
+        # Y axis
         self.y += dy * step
         r = self.draw_enemy()
+        collided = False
         for s in solids:
             if r.colliderect(s):
-                if dy > 0:
-                    r.bottom = s.top
-                elif dy < 0:
-                    r.top = s.bottom
-        self.y = r.centery
+                collided = True
+        if player_rect and r.colliderect(player_rect):
+            collided = True
+        for e_rect in other_enemies:
+            if r.colliderect(e_rect):
+                collided = True
+        if collided:
+            self.y = orig_y  # revert
+
+        # Attack timer update
+        if self.attack_timer > 0:
+            self.attack_timer -= dt
+        # Enemy attack logic
+        if player and self.can_attack_player(player.x, player.y):
+            if hasattr(player, "hp"):
+                player.hp -= self.attack_damage
+                # Show damage number overlay at player position
+                from config.combat import show_damage_numbers
+                show_damage_numbers(player.game_ref, player.x, player.y - 40, self.attack_damage, color=(255, 255, 255))
+            self.attack_timer = self.attack_cooldown
