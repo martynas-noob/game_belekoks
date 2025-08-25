@@ -263,6 +263,11 @@ class Game:
 
             pygame.display.flip()
 
+            mx, my = pygame.mouse.get_pos()
+            world_mx = mx + self.camera.x
+            world_my = my + self.camera.y
+            self.player.update_direction_towards(world_mx, world_my)
+
     def player_near_torch(self, distance=100):
         px, py = self.player.x, self.player.y
         tx, ty = self.torch_ground_pos

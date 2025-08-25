@@ -85,3 +85,16 @@ class Player:
         else:
             self.anim_index = 0
             self.anim_timer = 0.0
+
+    def update_direction_towards(self, target_x, target_y):
+        dx = target_x - self.x
+        dy = target_y - self.y
+        mag = math.hypot(dx, dy)
+        if mag > 0:
+            dx /= mag
+            dy /= mag
+            self.last_dir = (dx, dy)
+            if dx < 0:
+                self.facing_left = True
+            elif dx > 0:
+                self.facing_left = False
