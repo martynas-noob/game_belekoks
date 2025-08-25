@@ -11,14 +11,21 @@ class Fireball:
     dx: float
     dy: float
     speed: float = 300.0
-    radius: int = 20
+    radius: int = 22
+    width: int = 46  # Wider than tall
+    height: int = 31 # A bit less than width
     facing_left: bool = False
     exploding: bool = False
     explosion_frame: int = 0
     explosion_timer: float = 0.0
 
     def rect(self) -> pygame.Rect:
-        return pygame.Rect(int(self.x - self.radius), int(self.y - self.radius), self.radius*2, self.radius*2)
+        return pygame.Rect(
+            int(self.x - self.width // 2),
+            int(self.y - self.height // 2),
+            self.width,
+            self.height
+        )
 
     def update(self, dt: float):
         self.x += self.dx * self.speed * dt
@@ -32,7 +39,10 @@ class Fireball:
             surf.blit(exp_img, (px - exp_img.get_width() // 2, py - exp_img.get_height() // 2))
         elif img:
             angle = -math.degrees(math.atan2(self.dy, self.dx))
-            rotated_img = pygame.transform.rotate(img, angle)
+            scaled_img = pygame.transform.scale(img, (self.width, self.height))
+            rotated_img = pygame.transform.rotate(scaled_img, angle)
             surf.blit(rotated_img, (px - rotated_img.get_width() // 2, py - rotated_img.get_height() // 2))
         else:
-            pygame.draw.circle(surf, (255, 120, 40), (px, py), 15)
+            # Draw ellipse for fireball shape
+            ellipse_rect = pygame.Rect(px - self.width // 2, py - self.height // 2, self.width, self.height)
+            pygame.draw.ellipse(surf, (255, 120, 40), ellipse_rect)
