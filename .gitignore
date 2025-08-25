@@ -70,13 +70,9 @@ venv.bak/
 *.log
 
 # Images, assets, and binaries (optional, if not tracked)
-*.jpg
-*.jpeg
 *.bmp
-*.gif
 *.wav
 *.ogg
-*.mp3
 *.exe
 
 # Local config
