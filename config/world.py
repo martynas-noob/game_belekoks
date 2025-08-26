@@ -7,13 +7,16 @@ import math
 import random
 
 class World:
-    def __init__(self, layout: list[str], enemy_imgs: list, target_imgs: list):
+    def __init__(self, layout: list[str], enemy_imgs: list, target_imgs: list, door_img=None, door_img_open=None):
         self.layout = layout
         self.w = len(layout[0])
         self.h = len(layout)
         self.solids: list[pygame.Rect] = []
         self.enemies: list[Enemy] = []
         self.targets: list[Target] = []
+        self.doors: list = []  # Add this line
+        self.door_img = door_img  # Store door image
+        self.door_img_open = door_img_open  # Store open door image
         for y, row in enumerate(layout):
             for x, ch in enumerate(row):
                 if MAP_CHARS.get(ch, 0) == 1:
@@ -40,6 +43,19 @@ class World:
                         40, 60
                     )
                     self.solids.append(solid_rect)
+                elif MAP_CHARS.get(ch, 0) == 5:
+                    # Door
+                    from config.door import Door
+                    tx = x*TILE_SIZE+TILE_SIZE/2
+                    ty = y*TILE_SIZE+TILE_SIZE/2
+                    door = Door(tx, ty, 48, 72, img=self.door_img, img_open=self.door_img_open)
+                    self.doors.append(door)
+                    solid_rect = pygame.Rect(
+                        int(tx - 24),  # 48/2
+                        int(ty - 36),  # 72/2
+                        48, 72
+                    )
+                    self.solids.append(solid_rect)
 
     def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float, view_rect: pygame.Rect) -> None:
         start_x = max(0, view_rect.left // TILE_SIZE)
@@ -57,6 +73,10 @@ class World:
                 else:
                     col = COL_FLOOR_A if (tx+ty) % 2 == 0 else COL_FLOOR_B
                     pygame.draw.rect(surf, col, r)
+
+        # Draw doors after tiles
+        for door in getattr(self, "doors", []):
+            door.draw(surf, cam_x, cam_y)
 
     def remove_target_solid(self, target: Target):
         target_rect = pygame.Rect(

@@ -8,6 +8,8 @@ import random
 import pymunk
 print("Pymunk version:", pymunk.version)  # Add this for debugging
 
+import config.config as game_config  # Add this for access to all levels
+
 from config.config import (
     WIN_W, WIN_H, FPS, LEVEL_1, COL_BG, world_to_screen
 )
@@ -30,7 +32,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # -----------------------------
 
 class Game:
-    def __init__(self):
+    def __init__(self, level_index=0, entry_door_idx=None, prev_level_index=None):
         pygame.init()
         pygame.mixer.init()
         self.screen = pygame.display.set_mode((WIN_W, WIN_H))
@@ -101,6 +103,14 @@ class Game:
         self.slime_moving_sound = pygame.mixer.Sound("textures/NPC/slime/slime_moving.mp3")
         self.slime_death_sound = pygame.mixer.Sound("textures/NPC/slime/slime_death.mp3")
 
+        # --- Load door image before World ---
+        self.door_img = pygame.transform.scale(
+            pygame.image.load("textures/door/door_closed.png").convert_alpha(), (48, 72)
+        )
+        self.door_img_open = pygame.transform.scale(
+            pygame.image.load("textures/door/door_open.png").convert_alpha(), (48, 72)
+        )
+
         # Game state
         self.player = Player(200, 200)
         self.player.game_ref = self  # Set reference for damage overlay
@@ -108,7 +118,10 @@ class Game:
         # Provide a list of enemy/target images to World
         self.enemy_imgs = [self.monster_img_original, self.monster_img_alt, self.monster_img_boss]
         self.target_imgs = [self.target_img, self.target_img_alt]
-        self.world = World(LEVEL_1, self.enemy_imgs, self.target_imgs)
+        self.level_index = level_index  # Track current level index
+        self.prev_level_index = prev_level_index  # Track previous level index for backtracking
+        self.entry_door_idx = entry_door_idx  # Track which door was used to enter
+        self.load_level(self.level_index, entry_door_idx=self.entry_door_idx)
         self.fireballs = []
         self.torch_on_ground = True
         self.torch_following = False
@@ -177,14 +190,96 @@ class Game:
             self.light_mask_cache[radius] = mask
         return self.light_mask_cache[radius]
 
+    def load_level(self, level_index, entry_door_pos=None, entry_door_idx=None):
+        # Get all levels from config.py (LEVEL_1, LEVEL_2, etc.)
+        level_keys = [k for k in dir(game_config) if k.startswith("LEVEL_")]
+        level_keys.sort()  # Ensure LEVEL_1, LEVEL_2, ...
+        self.level_keys = level_keys
+        if 0 <= level_index < len(level_keys):
+            level_layout = getattr(game_config, level_keys[level_index])
+        else:
+            level_layout = getattr(game_config, level_keys[0])
+            self.level_index = 0
+        self.world = World(level_layout, self.enemy_imgs, self.target_imgs, door_img=self.door_img, door_img_open=self.door_img_open)
+        self.fireballs = []
+        # Find all doors in the level
+        door_positions = []
+        for y, row in enumerate(level_layout):
+            for x, ch in enumerate(row):
+                if ch == '7':
+                    door_positions.append((x * 48 + 24, y * 48 + 36))
+        # Determine spawn position
+        if entry_door_idx is not None and 0 <= entry_door_idx < len(door_positions):
+            # Try to spawn player on a floor tile next to the entry door (prefer right, left, down, up)
+            x, y = door_positions[entry_door_idx]
+            tile_x = int((x - 24) // 48)
+            tile_y = int((y - 36) // 48)
+            offsets = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+            placed = False
+            for dx, dy in offsets:
+                nx, ny = tile_x + dx, tile_y + dy
+                if 0 <= ny < len(level_layout) and 0 <= nx < len(level_layout[0]):
+                    if level_layout[ny][nx] == '.':
+                        self.player.x = nx * 48 + 24
+                        self.player.y = ny * 48 + 36
+                        placed = True
+                        break
+            if not placed:
+                self.player.x, self.player.y = x, y
+        elif entry_door_pos is not None:
+            # Fallback for legacy logic
+            x, y = entry_door_pos
+            tile_x = int((x - 24) // 48)
+            tile_y = int((y - 36) // 48)
+            offsets = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+            placed = False
+            for dx, dy in offsets:
+                nx, ny = tile_x + dx, tile_y + dy
+                if 0 <= ny < len(level_layout) and 0 <= nx < len(level_layout[0]):
+                    if level_layout[ny][nx] == '.':
+                        self.player.x = nx * 48 + 24
+                        self.player.y = ny * 48 + 36
+                        placed = True
+                        break
+            if not placed:
+                self.player.x, self.player.y = entry_door_pos
+        else:
+            # If there are doors, always try to spawn next to the first door
+            if door_positions:
+                x, y = door_positions[0]
+                tile_x = int((x - 24) // 48)
+                tile_y = int((y - 36) // 48)
+                offsets = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                placed = False
+                for dx, dy in offsets:
+                    nx, ny = tile_x + dx, tile_y + dy
+                    if 0 <= ny < len(level_layout) and 0 <= nx < len(level_layout[0]):
+                        if level_layout[ny][nx] == '.':
+                            self.player.x = nx * 48 + 24
+                            self.player.y = ny * 48 + 36
+                            placed = True
+                            break
+                if not placed:
+                    self.player.x, self.player.y = door_positions[0]
+            else:
+                self.player.x, self.player.y = 200, 200
+        self.player.hp = self.player.max_hp
+        self.camera = Camera()
+        self.door_positions = door_positions  # Store for later use
+        self.door_transition = None  # (idx, start_time, direction)
+        self.door_transition_duration = 2.0  # seconds
+
     def run(self):
         print("Game loop started")  # Debug: confirm loop starts
         running = True
         game_over = False
+        next_level_triggered = False  # Add this flag to prevent multiple triggers per frame
+        last_door_idx = None  # Track which door was last used
         while running:
             dt = self.clock.tick(FPS) / 1000.0
             shoot_fireball = False
             sword_swing = False
+            next_level_triggered = False  # Reset at the start of each frame
 
             # --- Torch pickup cooldown decrement ---
             if self.torch_pickup_cooldown > 0:
@@ -242,9 +337,123 @@ class Game:
                                 self.torch_pickup_cooldown = 0.3
                                 self.torch_vel_x = random.choice([-1, 1]) * 80.0
                                 self.torch_vel_y = random.choice([-1, 1]) * 80.0
+                        elif e.key == pygame.K_RETURN:
+                            # Try to open a nearby door
+                            for door in getattr(self.world, "doors", []):
+                                dist = math.hypot(self.player.x - door.x, self.player.y - door.y)
+                                if dist < 80:
+                                    door.open = True
+                        elif e.key == pygame.K_r:
+                            # Restart the current level
+                            self.player.x, self.player.y = 200, 200  # Reset player position
+                            self.player.hp = self.player.max_hp  # Restore player health
+                            self.world.reset()  # Reset the world (enemies, targets, etc.)
+                            game_over = False  # Reset game over state
+                            next_level_triggered = False  # Ensure next level is not triggered
                     elif e.type == pygame.MOUSEBUTTONDOWN:
                         if e.button == 1:  # Left mouse button
                             sword_swing = True
+
+            # --- Door transition animation logic ---
+            if self.door_transition is not None:
+                idx, start_time, direction = self.door_transition
+                elapsed = pygame.time.get_ticks() / 1000.0 - start_time
+                # Open the door visually
+                if 0 <= idx < len(getattr(self.world, "doors", [])):
+                    getattr(self.world, "doors", [])[idx].open = True
+
+                # --- DRAWING (with lighting) during transition ---
+                self.screen.fill(COL_BG)
+                self.world.draw(self.screen, self.camera.x, self.camera.y, self.camera.view_rect())
+
+                # --- LIGHTING OVERLAY (same as normal frame) ---
+                darkness = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
+                darkness.fill((0, 0, 0, self.darkness_alpha))
+
+                # Torch glow
+                if self.torch_on_ground or self.torch_following:
+                    torch_px, torch_py = world_to_screen(
+                        self.torch_ground_pos[0] - 15 + self.torch_wiggle_offset[0],
+                        self.torch_ground_pos[1] - 30 + self.torch_wiggle_offset[1],
+                        self.camera.x, self.camera.y
+                    )
+                    torch_center = (torch_px + 15, torch_py + 30)
+                else:
+                    torch_center = None
+
+                if torch_center:
+                    mask = self.get_light_mask(self.torch_glow_radius)
+                    x = torch_center[0] - self.torch_glow_radius
+                    y = torch_center[1] - self.torch_glow_radius
+                    darkness.blit(mask, (x, y), special_flags=pygame.BLEND_RGBA_SUB)
+
+                # Fireball and explosion glow
+                fireball_glow_radius = 80
+                explosion_glow_radius = 180
+                for fireball in self.fireballs:
+                    fx, fy = world_to_screen(fireball.x, fireball.y, self.camera.x, self.camera.y)
+                    fireball_center = (int(fx), int(fy))
+                    if fireball.exploding:
+                        mask = self.get_light_mask(explosion_glow_radius)
+                        x = fireball_center[0] - explosion_glow_radius
+                        y = fireball_center[1] - explosion_glow_radius
+                        darkness.blit(mask, (x, y), special_flags=pygame.BLEND_RGBA_SUB)
+                    else:
+                        mask = self.get_light_mask(fireball_glow_radius)
+                        x = fireball_center[0] - fireball_glow_radius
+                        y = fireball_center[1] - fireball_glow_radius
+                        darkness.blit(mask, (x, y), special_flags=pygame.BLEND_RGBA_SUB)
+
+                self.screen.blit(darkness, (0, 0))
+                pygame.display.flip()
+
+                # After animation, actually change level
+                if elapsed >= self.door_transition_duration:
+                    if direction == "back":
+                        prev_level_index = self.prev_level_index
+                        prev_level_layout = getattr(game_config, self.level_keys[prev_level_index])
+                        prev_doors = []
+                        for y, row in enumerate(prev_level_layout):
+                            for x, ch in enumerate(row):
+                                if ch == '7':
+                                    prev_doors.append((x * 48 + 24, y * 48 + 36))
+                        entry_idx = idx if idx < len(prev_doors) else 0
+                        self.level_index = prev_level_index
+                        self.prev_level_index = prev_level_index - 1 if prev_level_index > 0 else None
+                        self.entry_door_idx = entry_idx
+                        self.load_level(self.level_index, entry_door_idx=entry_idx)
+                    else:
+                        next_level_index = (self.level_index + 1) % len(self.level_keys)
+                        next_level_layout = getattr(game_config, self.level_keys[next_level_index])
+                        next_doors = []
+                        for y, row in enumerate(next_level_layout):
+                            for x, ch in enumerate(row):
+                                if ch == '7':
+                                    next_doors.append((x * 48 + 24, y * 48 + 36))
+                        entry_idx = idx if idx < len(next_doors) else 0
+                        self.prev_level_index = self.level_index
+                        self.level_index = next_level_index
+                        self.entry_door_idx = entry_idx
+                        self.load_level(self.level_index, entry_door_idx=entry_idx)
+                    self.door_transition = None
+                    next_level_triggered = False
+                continue  # Skip rest of loop this frame
+
+            # --- After input handling, check for player entering open door ---
+            for idx, door in enumerate(getattr(self.world, "doors", [])):
+                dist = math.hypot(self.player.x - door.x, self.player.y - door.y)
+                if door.open and dist < 80 and not next_level_triggered and self.door_transition is None:
+                    print("Level complete! Loading next/previous level...")
+                    # --- Backtrack logic: only allow backtracking if we are not at the first level ---
+                    if self.prev_level_index is not None and self.level_index != 0 and idx == self.entry_door_idx:
+                        # Start door transition for backtracking
+                        self.door_transition = (idx, pygame.time.get_ticks() / 1000.0, "back")
+                        next_level_triggered = True
+                        break
+                    # --- Forward logic ---
+                    self.door_transition = (idx, pygame.time.get_ticks() / 1000.0, "forward")
+                    next_level_triggered = True
+                    break
 
             if game_over:
                 # Draw game over overlay
