@@ -9,9 +9,10 @@ import pymunk
 print("Pymunk version:", pymunk.version)  # Add this for debugging
 
 import config.config as game_config  # Add this for access to all levels
+from config.render import draw_game_frame, draw_inventory_overlay
 
 from config.config import (
-    WIN_W, WIN_H, FPS, LEVEL_1, COL_BG, world_to_screen, LEVEL_NAMES
+    WIN_W, WIN_H, FPS, LEVEL_1, COL_BG, world_to_screen, LEVEL_NAMES, LEVEL_MONSTER_MIN_MAX
 )
 from config.player import Player
 from config.enemy import Enemy
@@ -203,7 +204,22 @@ class Game:
         else:
             level_layout = getattr(game_config, level_keys[0])
             self.level_index = 0
-        self.world = World(level_layout, self.enemy_imgs, self.target_imgs, door_img=self.door_img, door_img_open=self.door_img_open)
+        game_level = self.level_index + 1  # Level 1-based
+        # Get monster level min/max from config, fallback to (1, game_level)
+        if self.level_index < len(LEVEL_MONSTER_MIN_MAX):
+            monster_level_min, monster_level_max = LEVEL_MONSTER_MIN_MAX[self.level_index]
+        else:
+            monster_level_min, monster_level_max = 1, game_level
+        self.world = World(
+            level_layout,
+            self.enemy_imgs,
+            self.target_imgs,
+            door_img=self.door_img,
+            door_img_open=self.door_img_open,
+            game_level=game_level,
+            monster_level_min=monster_level_min,
+            monster_level_max=monster_level_max
+        )
         self.fireballs = []
         self.enemy_bodies = []
         self.enemy_shapes = []
@@ -296,6 +312,8 @@ class Game:
         self.door_transition = None  # (idx, start_time, direction)
         self.door_transition_duration = 2.0  # seconds
         self.level_name_timer = 5.0  # Show level name for 5 seconds
+        self.inventory_open = False  # <-- Add this line
+        self.inventory_tab = 0  # 0=Inventory, 1=Stats, 2=Skills
 
     def run(self):
         print("Game loop started")  # Debug: confirm loop starts
@@ -320,6 +338,32 @@ class Game:
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
                     running = False
+                elif self.inventory_open:
+                    if e.type == pygame.KEYDOWN:
+                        if e.key in (pygame.K_i, pygame.K_TAB):
+                            self.inventory_open = False
+                        elif e.key in (pygame.K_LEFT, pygame.K_a):
+                            self.inventory_tab = (self.inventory_tab - 1) % 3
+                        elif e.key in (pygame.K_RIGHT, pygame.K_d):
+                            self.inventory_tab = (self.inventory_tab + 1) % 3
+                        elif e.key == pygame.K_1:
+                            self.inventory_tab = 0
+                        elif e.key == pygame.K_2:
+                            self.inventory_tab = 1
+                        elif e.key == pygame.K_3:
+                            self.inventory_tab = 2
+                    elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.inventory_tab == 1:
+                        mx, my = pygame.mouse.get_pos()
+                        # Centered and spaced buttons
+                        btn_w, btn_h = 32, 32
+                        btn_x = self.screen.get_width() // 2 + 180
+                        btn_y_start = 220 + 11 * 40
+                        stat_names = ["strength", "dexterity", "vitality", "intelligence"]
+                        for i, stat in enumerate(stat_names):
+                            btn_rect = pygame.Rect(btn_x, btn_y_start + i * 56, btn_w, btn_h)
+                            if btn_rect.collidepoint(mx, my):
+                                self.player.assign_stat(stat)
+                                break
                 elif game_over:
                     if e.type == pygame.KEYDOWN:
                         if e.key == pygame.K_ESCAPE:
@@ -342,6 +386,8 @@ class Game:
                     if e.type == pygame.KEYDOWN:
                         if e.key == pygame.K_ESCAPE:
                             running = False
+                        elif e.key in (pygame.K_i, pygame.K_TAB):
+                            self.inventory_open = True
                         elif e.key == pygame.K_f:
                             shoot_fireball = True
                         elif e.key == pygame.K_t:
@@ -383,6 +429,13 @@ class Game:
                     elif e.type == pygame.MOUSEBUTTONDOWN:
                         if e.button == 1:  # Left mouse button
                             sword_swing = True
+
+            if self.inventory_open:
+                draw_inventory_overlay(self, self.inventory_tab)
+                continue  # Pause game updates while inventory is open
+
+            # Regenerate HP and Mana each frame (only when not paused)
+            self.player.update_regeneration(dt)
 
             # --- Door transition animation logic ---
             if self.door_transition is not None:
@@ -511,12 +564,12 @@ class Game:
 
             # --- Animation and combat logic ---
             # Update player animation
-            if hasattr(self.player, "update_animation"):
-                self.player.update_animation(dt)
+            self.player.update_animation(dt)
             # Update sword swing animation and logic
             if sword_swing and not self.player.sword_swinging:
                 self.player.start_sword_swing()
-                self.sword_swing_damage = random.randint(10, 15)
+                # Sword damage based on strength
+                self.sword_swing_damage = random.randint(self.player.strength * 10, self.player.strength * 10 + 9)
                 self.sword_swing_hit_targets = set()
                 self.sword_sound.play()
             if hasattr(self.player, "update_sword"):
@@ -527,9 +580,18 @@ class Game:
                 dx, dy = self.player.last_dir if hasattr(self.player, "last_dir") else (1, 0)
                 if dx != 0 or dy != 0:
                     facing_left = dx < 0
-                    fireball = Fireball(self.player.x, self.player.y, dx, dy, facing_left=facing_left)
-                    self.fireballs.append(fireball)
-                    self.cast_sound.play()
+                    fireball_cost = 20  # Match Fireball.cost default
+                    if hasattr(self.player, "mana") and self.player.mana >= fireball_cost:
+                        fireball_damage = random.randint(self.player.intelligence * 10, self.player.intelligence * 10 + 9)
+                        fireball = Fireball(self.player.x, self.player.y, dx, dy, facing_left=facing_left, damage=fireball_damage, cost=fireball_cost)
+                        self.fireballs.append(fireball)
+                        self.player.mana -= fireball_cost
+                        if self.player.mana < 0:
+                            self.player.mana = 0
+                        self.cast_sound.play()
+                    else:
+                        # Not enough mana, do nothing or show feedback
+                        pass
 
             # --- Sword damage to targets and enemies ---
             if hasattr(self.player, "sword_swinging") and self.player.sword_swinging:
@@ -588,6 +650,8 @@ class Game:
                         self.slime_damage_sound.play()
                         if enemy.hit_points <= 0:
                             self.slime_death_sound.play()
+                            # Grant XP to player
+                            self.player.add_xp(getattr(enemy, "xp_reward", 5))
                             enemies_to_remove.add(i)
                             # --- Track defeated enemy by initial position ---
                             # Use initial positions from initial_enemy_positions_per_level
@@ -645,6 +709,8 @@ class Game:
                             self.slime_damage_sound.play()
                             if enemy.hit_points <= 0:
                                 self.slime_death_sound.play()
+                                # Grant XP to player
+                                self.player.add_xp(getattr(enemy, "xp_reward", 5))
                                 enemies_to_remove.add(i)
                                 # --- Track defeated enemy by initial position ---
                                 initial_positions = self.initial_enemy_positions_per_level.get(self.level_index, [])
@@ -694,201 +760,9 @@ class Game:
             view = self.camera.view_rect()
 
             # --- DRAWING ---
-            self.screen.fill(COL_BG)
-            self.world.draw(self.screen, self.camera.x, self.camera.y, view)
+            draw_game_frame(self, dt)
 
-            # --- Draw player HP bar (big, top left) ---
-            big_hp_bar_width = 400
-            big_hp_bar_height = 32
-            hp_ratio = max(0, self.player.hp / self.player.max_hp)
-            bar_x = 40
-            bar_y = 20  # Move closer to top edge
-            pygame.draw.rect(self.screen, (40, 40, 40), (bar_x, bar_y, big_hp_bar_width, big_hp_bar_height), border_radius=10)
-            pygame.draw.rect(self.screen, (255, 80, 80), (bar_x, bar_y, int(big_hp_bar_width * hp_ratio), big_hp_bar_height), border_radius=10)
-            pygame.draw.rect(self.screen, (0, 0, 0), (bar_x, bar_y, big_hp_bar_width, big_hp_bar_height), 4, border_radius=10)
-            # Draw HP text
-            font = pygame.font.SysFont("arial", 28, bold=True)
-            hp_text = f"HP: {self.player.hp} / {self.player.max_hp}"
-            text_surf = font.render(hp_text, True, (255, 255, 255))
-            self.screen.blit(text_surf, (bar_x + 12, bar_y + big_hp_bar_height // 2 - text_surf.get_height() // 2))
-
-            # Draw enemy sprites with animation FIRST (before hitboxes)
-            for i, enemy in enumerate(self.world.enemies):
-                # Defensive: only access enemy_bodies if index exists
-                if i < len(self.enemy_bodies):
-                    ex, ey = world_to_screen(self.enemy_bodies[i].position[0], self.enemy_bodies[i].position[1], self.camera.x, self.camera.y)
-                else:
-                    ex, ey = world_to_screen(enemy.x, enemy.y, self.camera.x, self.camera.y)
-                enemy.draw(self.screen, self.camera.x, self.camera.y)
-
-            # Draw target sprites
-            for target in self.world.targets:
-                target.draw(self.screen, self.camera.x, self.camera.y)
-
-            # Draw player sprite with animation and sword
-            player_px, player_py = world_to_screen(self.player_body.position[0] - 40, self.player_body.position[1] - 60, self.camera.x, self.camera.y)
-            anim_dir = self.player.anim_dir
-            frame = self.player.anim_index
-            player_img = self.player_anim_frames[anim_dir][frame]
-            self.player.draw_with_sword(self.screen, player_px, player_py, player_img, self.sword_img, self.sword_slash_imgs)
-
-            # Draw torch sprite
-            if self.torch_on_ground or self.torch_following:
-                torch_px, torch_py = world_to_screen(
-                    self.torch_ground_pos[0] - 15 + self.torch_wiggle_offset[0],
-                    self.torch_ground_pos[1] - 30 + self.torch_wiggle_offset[1],
-                    self.camera.x, self.camera.y
-                )
-                self.screen.blit(self.torch_img, (torch_px, torch_py))
-
-            # Draw fireball sprites
-            for fireball in self.fireballs:
-                fx, fy = world_to_screen(fireball.x, fireball.y, self.camera.x, self.camera.y)
-                fireball.draw(self.screen, self.camera.x, self.camera.y, self.fireball_img, self.explosion_imgs)
-
-            # --- Draw colored hitboxes for all entities ---
-
-            # Player hitbox (circle, blue)
-            player_px, player_py = world_to_screen(self.player_body.position[0], self.player_body.position[1], self.camera.x, self.camera.y)
-            # Draw filled circle for player hitbox
-            pygame.draw.circle(self.screen, (0, 0, 255), (int(player_px), int(player_py)), int(self.player_shape.radius))
-            # Player HP overlay (white, matches damage overlay)
-            pygame.draw.circle(self.screen, (255, 255, 255), (int(player_px), int(player_py)), int(self.player_shape.radius) - 4, 2)
-
-            # Enemy hitboxes (circle, green) and damage overlay (white)
-            for i, enemy_body in enumerate(self.enemy_bodies):
-                if i < len(self.enemy_shapes):
-                    ex, ey = world_to_screen(enemy_body.position[0], enemy_body.position[1], self.camera.x, self.camera.y)
-                    radius = int(self.enemy_shapes[i].radius)
-                else:
-                    ex, ey = 0, 0
-                    radius = 20
-                pygame.draw.circle(self.screen, (0, 255, 0), (int(ex), int(ey)), radius, 2)
-                pygame.draw.circle(self.screen, (255, 255, 255), (int(ex), int(ey)), radius - 4, 2)
-                # Dotted inlay for enemy attack range (e.g., 80px)
-                attack_range = 80
-                for angle in range(0, 360, 18):
-                    rad = math.radians(angle)
-                    dot_x = int(ex + math.cos(rad) * attack_range)
-                    dot_y = int(ey + math.sin(rad) * attack_range)
-                    pygame.draw.circle(self.screen, (200, 200, 200), (dot_x, dot_y), 3)
-                # Draw enemy visibility range (thin yellow circle)
-                if i < len(self.world.enemies):
-                    visibility_range = getattr(self.world.enemies[i], "visibility_range", 240)
-                    pygame.draw.circle(self.screen, (255, 255, 0), (int(ex), int(ey)), int(visibility_range), 1)
-
-            # Torch hitbox (rect, purple)
-            if self.torch_on_ground or self.torch_following:
-                torch_px, torch_py = world_to_screen(
-                    self.torch_ground_pos[0] + self.torch_wiggle_offset[0],
-                    self.torch_ground_pos[1] + self.torch_wiggle_offset[1],
-                    self.camera.x, self.camera.y
-                )
-                torch_rect = pygame.Rect(int(torch_px - 8), int(torch_py - 16), 16, 32)
-                pygame.draw.rect(self.screen, (128, 0, 128), torch_rect, 2)
-
-            # Wall hitboxes (rect, gray with black outline)
-            for wall_shape in self.wall_shapes:
-                wall_bb = wall_shape.bb
-                wall_rect = pygame.Rect(
-                    int(wall_bb.left - self.camera.x),
-                    int(wall_bb.top - self.camera.y),
-                    int(wall_bb.right - wall_bb.left),
-                    int(wall_bb.bottom - wall_bb.top)
-                )
-                pygame.draw.rect(self.screen, (100, 100, 100), wall_rect, 2)  # gray inner
-                pygame.draw.rect(self.screen, (0, 0, 0), wall_rect, 4)        # black outline
-
-            # Target hitboxes (rect, yellow)
-            for target in self.world.targets:
-                tx, ty = world_to_screen(target.x, target.y, self.camera.x, self.camera.y)
-                # Center hitbox on target sprite
-                target_rect = pygame.Rect(
-                    int(tx - target.w // 2),
-                    int(ty - target.h // 2),
-                    target.w, target.h
-                )
-                pygame.draw.rect(self.screen, (255, 255, 0), target_rect, 2)
-
-            # Fireball hitboxes (rect, orange)
-            for fireball in self.fireballs:
-                fx, fy = world_to_screen(fireball.x, fireball.y, self.camera.x, self.camera.y)
-                fireball_rect = pygame.Rect(int(fx - 20), int(fy - 10), 40, 20)
-                pygame.draw.rect(self.screen, (255, 128, 0), fireball_rect, 2)
-
-            # Melee attack hitbox (sword) - red
-            if self.player.sword_swinging:
-                # Calculate sword hitbox in front of player, facing mouse or last direction
-                mx, my = pygame.mouse.get_pos()
-                world_mx = mx + self.camera.x
-                world_my = my + self.camera.y
-                px, py = self.player.x, self.player.y
-
-                dx = world_mx - px
-                dy = world_my - py
-                mag = math.hypot(dx, dy)
-                if mag > 0:
-                    dx /= mag
-                    dy /= mag
-                else:
-                    dx, dy = self.player.last_dir
-
-                sword_w, sword_h = 48, 48
-                offset = 32
-                hitbox_x = px + dx * offset - sword_w // 2
-                hitbox_y = py + dy * offset - sword_h // 2
-
-                sword_px, sword_py = world_to_screen(hitbox_x, hitbox_y, self.camera.x, self.camera.y)
-                sword_hitbox = pygame.Rect(int(sword_px), int(sword_py), sword_w, sword_h)
-                pygame.draw.rect(self.screen, (255, 0, 0), sword_hitbox, 2)
-
-            # --- Now draw overlays/effects above hitboxes ---
-            draw_damage_numbers(self, self.screen, self.camera, dt)
-            draw_health_bars(self, self.screen, self.camera)
-            update_health_bars(self, dt)
-
-            # --- LIGHTING OVERLAY ---
-            darkness = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
-            darkness.fill((0, 0, 0, self.darkness_alpha))
-
-            # Torch glow
-            if self.torch_on_ground or self.torch_following:
-                torch_px, torch_py = world_to_screen(
-                    self.torch_ground_pos[0] - 15 + self.torch_wiggle_offset[0],
-                    self.torch_ground_pos[1] - 30 + self.torch_wiggle_offset[1],
-                    self.camera.x, self.camera.y
-                )
-                torch_center = (torch_px + 15, torch_py + 30)
-            else:
-                torch_center = None
-
-            if torch_center:
-                # --- Use cached mask ---
-                mask = self.get_light_mask(self.torch_glow_radius)
-                x = torch_center[0] - self.torch_glow_radius
-                y = torch_center[1] - self.torch_glow_radius
-                darkness.blit(mask, (x, y), special_flags=pygame.BLEND_RGBA_SUB)
-
-            # Fireball and explosion glow
-            fireball_glow_radius = 80
-            explosion_glow_radius = 180
-            for fireball in self.fireballs:
-                fx, fy = world_to_screen(fireball.x, fireball.y, self.camera.x, self.camera.y)
-                fireball_center = (int(fx), int(fy))
-                if fireball.exploding:
-                    mask = self.get_light_mask(explosion_glow_radius)
-                    x = fireball_center[0] - explosion_glow_radius
-                    y = fireball_center[1] - explosion_glow_radius
-                    darkness.blit(mask, (x, y), special_flags=pygame.BLEND_RGBA_SUB)
-                else:
-                    mask = self.get_light_mask(fireball_glow_radius)
-                    x = fireball_center[0] - fireball_glow_radius
-                    y = fireball_center[1] - fireball_glow_radius
-                    darkness.blit(mask, (x, y), special_flags=pygame.BLEND_RGBA_SUB)
-
-            self.screen.blit(darkness, (0, 0))
-
-            pygame.display.flip()
+            # Remove all other drawing code from the main loop!
 
             mx, my = pygame.mouse.get_pos()
             world_mx = mx + self.camera.x
@@ -926,27 +800,26 @@ class Game:
 
             # --- Enemy movement and attack ---
             slime_moving = False
-            if self.torch_on_ground or self.torch_following:
-                torch_px, torch_py = world_to_screen(
-                    self.torch_ground_pos[0] - 15 + self.torch_wiggle_offset[0],
-                    self.torch_ground_pos[1] - 30 + self.torch_wiggle_offset[1],
-                    self.camera.x, self.camera.y
-                )
-                torch_center = (torch_px + 15, torch_py + 30)
-            else:
-                torch_center = None
-
-            if torch_center is None:
-                monster_target = self.torch_ground_pos
-            elif self.player_near_torch():
-                monster_target = (self.player.x, self.player.y)
-            else:
-                monster_target = self.torch_ground_pos
-
+            # Remove old monster_target logic
+            # Instead, for each enemy, determine if player or torch is in visibility range
             for i, enemy in enumerate(self.world.enemies):
                 prev_x, prev_y = enemy.x, enemy.y
                 other_enemy_rects = [e.draw_enemy() for j, e in enumerate(self.world.enemies) if j != i]
                 player_rect = self.player.rect()
+                # Determine target for each enemy
+                player_in_range = enemy.sees_target(self.player.x, self.player.y)
+                torch_in_range = False
+                torch_pos = self.torch_ground_pos
+                if self.torch_on_ground or self.torch_following:
+                    torch_x, torch_y = torch_pos
+                    torch_in_range = enemy.sees_target(torch_x, torch_y)
+                # Only chase if player or torch is in range
+                if player_in_range:
+                    monster_target = (self.player.x, self.player.y)
+                elif torch_in_range:
+                    monster_target = torch_pos
+                else:
+                    monster_target = (enemy.x, enemy.y)  # Idle
                 enemy.update(dt, monster_target, self.world.solids, player_rect, other_enemy_rects, player=self.player)
                 # Defensive: only update enemy_bodies if index exists
                 if i < len(self.enemy_bodies):
@@ -954,28 +827,7 @@ class Game:
                 if enemy.x != prev_x or enemy.y != prev_y:
                     slime_moving = True
 
-            # --- Draw player HP bar ---
-            hp_bar_width = 200
-            hp_bar_height = 18
-            hp_ratio = max(0, self.player.hp / self.player.max_hp)
-            pygame.draw.rect(self.screen, (40, 40, 40), (30, 30, hp_bar_width, hp_bar_height), border_radius=6)
-            pygame.draw.rect(self.screen, (255, 80, 80), (30, 30, int(hp_bar_width * hp_ratio), hp_bar_height), border_radius=6)
-
-            # --- Draw player HP bar (big, top left) ---
-            big_hp_bar_width = 400
-            big_hp_bar_height = 32
-            hp_ratio = max(0, self.player.hp / self.player.max_hp)
-            bar_x = 40
-            bar_y = 20  # Move closer to top edge
-            pygame.draw.rect(self.screen, (40, 40, 40), (bar_x, bar_y, big_hp_bar_width, big_hp_bar_height), border_radius=10)
-            pygame.draw.rect(self.screen, (255, 80, 80), (bar_x, bar_y, int(big_hp_bar_width * hp_ratio), big_hp_bar_height), border_radius=10)
-            pygame.draw.rect(self.screen, (0, 0, 0), (bar_x, bar_y, big_hp_bar_width, big_hp_bar_height), 4, border_radius=10)
-            # Draw HP text
-            font = pygame.font.SysFont("arial", 28, bold=True)
-            hp_text = f"HP: {self.player.hp} / {self.player.max_hp}"
-            text_surf = font.render(hp_text, True, (255, 255, 255))
-            self.screen.blit(text_surf, (bar_x + 12, bar_y + big_hp_bar_height // 2 - text_surf.get_height() // 2))
-
+            
             # --- Torch movement and wiggle logic ---
             if self.torch_following:
                 # Smoothly move torch toward player, but cap movement per frame

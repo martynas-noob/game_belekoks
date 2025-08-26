@@ -19,11 +19,13 @@ class Fireball:
     exploding: bool = False
     explosion_frame: int = 0
     explosion_timer: float = 0.0
-    damage: int = 0  # Add this line
+    damage: int = 0  # Now set by Game.py
     damage_min: int = 10
     damage_max: int = 15
+    cost: int = 20  # Mana cost to cast fireball
 
     def __post_init__(self):
+        # Only randomize if not set
         if self.damage == 0:
             self.damage = random.randint(self.damage_min, self.damage_max)
 
