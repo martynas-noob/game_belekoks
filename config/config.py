@@ -89,7 +89,7 @@ LEVEL_NAMES = [
 
 LEVEL_MONSTER_MIN_MAX = [
     (1, 1),  # Level 1: min=1, max=1
-    (1, 5),  # Level 2: min=1, max=2
+    (1, 1),  # Level 2: min=1, max=2
     (2, 3),  # Level 3: min=2, max=3
     # Add more as needed for additional levels
 ]

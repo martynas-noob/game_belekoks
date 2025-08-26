@@ -9,7 +9,7 @@ import pymunk
 print("Pymunk version:", pymunk.version)  # Add this for debugging
 
 import config.config as game_config  # Add this for access to all levels
-from config.render import draw_game_frame
+from config.render import draw_game_frame, draw_inventory_overlay
 
 from config.config import (
     WIN_W, WIN_H, FPS, LEVEL_1, COL_BG, world_to_screen, LEVEL_NAMES, LEVEL_MONSTER_MIN_MAX
@@ -312,6 +312,8 @@ class Game:
         self.door_transition = None  # (idx, start_time, direction)
         self.door_transition_duration = 2.0  # seconds
         self.level_name_timer = 5.0  # Show level name for 5 seconds
+        self.inventory_open = False  # <-- Add this line
+        self.inventory_tab = 0  # 0=Inventory, 1=Stats, 2=Skills
 
     def run(self):
         print("Game loop started")  # Debug: confirm loop starts
@@ -336,6 +338,32 @@ class Game:
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
                     running = False
+                elif self.inventory_open:
+                    if e.type == pygame.KEYDOWN:
+                        if e.key in (pygame.K_i, pygame.K_TAB):
+                            self.inventory_open = False
+                        elif e.key in (pygame.K_LEFT, pygame.K_a):
+                            self.inventory_tab = (self.inventory_tab - 1) % 3
+                        elif e.key in (pygame.K_RIGHT, pygame.K_d):
+                            self.inventory_tab = (self.inventory_tab + 1) % 3
+                        elif e.key == pygame.K_1:
+                            self.inventory_tab = 0
+                        elif e.key == pygame.K_2:
+                            self.inventory_tab = 1
+                        elif e.key == pygame.K_3:
+                            self.inventory_tab = 2
+                    elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.inventory_tab == 1:
+                        mx, my = pygame.mouse.get_pos()
+                        # Centered and spaced buttons
+                        btn_w, btn_h = 32, 32
+                        btn_x = self.screen.get_width() // 2 + 180
+                        btn_y_start = 220 + 11 * 40
+                        stat_names = ["strength", "dexterity", "vitality", "intelligence"]
+                        for i, stat in enumerate(stat_names):
+                            btn_rect = pygame.Rect(btn_x, btn_y_start + i * 56, btn_w, btn_h)
+                            if btn_rect.collidepoint(mx, my):
+                                self.player.assign_stat(stat)
+                                break
                 elif game_over:
                     if e.type == pygame.KEYDOWN:
                         if e.key == pygame.K_ESCAPE:
@@ -358,6 +386,8 @@ class Game:
                     if e.type == pygame.KEYDOWN:
                         if e.key == pygame.K_ESCAPE:
                             running = False
+                        elif e.key in (pygame.K_i, pygame.K_TAB):
+                            self.inventory_open = True
                         elif e.key == pygame.K_f:
                             shoot_fireball = True
                         elif e.key == pygame.K_t:
@@ -399,6 +429,13 @@ class Game:
                     elif e.type == pygame.MOUSEBUTTONDOWN:
                         if e.button == 1:  # Left mouse button
                             sword_swing = True
+
+            if self.inventory_open:
+                draw_inventory_overlay(self, self.inventory_tab)
+                continue  # Pause game updates while inventory is open
+
+            # Regenerate HP and Mana each frame (only when not paused)
+            self.player.update_regeneration(dt)
 
             # --- Door transition animation logic ---
             if self.door_transition is not None:

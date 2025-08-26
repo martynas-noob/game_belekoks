@@ -38,6 +38,7 @@ class Player:
     xp: int = 0
     max_xp: int = 10
     level: int = 1
+    stat_points: int = 0
 
     def __post_init__(self):
         # Scale stats
@@ -50,6 +51,7 @@ class Player:
         self.level = 1
         self.xp = 0
         self.max_xp = 10
+        self.stat_points = 0
 
     def start_sword_swing(self):
         start_sword_swing(self)
@@ -151,8 +153,34 @@ class Player:
             self.xp -= self.max_xp
             self.level += 1
             self.max_xp = 10 * self.level
-            # Optionally: increase stats on level up
-            # self.strength += 1
-            # self.vitality += 1
-            # self.dexterity += 1
-            # self.intelligence += 1
+            self.stat_points += 2  # Add 2 points per level up
+
+    def assign_stat(self, stat: str):
+        if self.stat_points > 0:
+            if stat == "strength":
+                self.strength += 1
+            elif stat == "dexterity":
+                self.dexterity += 1
+            elif stat == "vitality":
+                self.vitality += 1
+            elif stat == "intelligence":
+                self.intelligence += 1
+            else:
+                return
+            self.stat_points -= 1
+            # Optionally update derived stats
+            self.max_hp = self.vitality * 100
+            self.hp = min(self.hp, self.max_hp)
+            self.stamina = self.vitality * 20
+            self.speed = 180.0 + self.dexterity * 20
+            self.max_mana = self.intelligence * 100
+            self.mana = min(self.mana, self.max_mana)
+
+    def update_regeneration(self, dt: float):
+        # HP regeneration: 10 * vitality * (level * 0.2) per second
+        hp_regen = 10 * self.vitality * (self.level * 0.2)
+        mana_regen = 10 * self.intelligence * (self.level * 0.2)
+        if hp_regen > 0 and self.hp < self.max_hp:
+            self.hp = min(self.max_hp, self.hp + hp_regen * dt)
+        if mana_regen > 0 and self.mana < self.max_mana:
+            self.mana = min(self.max_mana, self.mana + mana_regen * dt)

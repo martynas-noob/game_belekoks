@@ -19,7 +19,7 @@ def draw_game_frame(game, dt):
     pygame.draw.rect(game.screen, (40, 40, 40), (bar_x, bar_y, big_hp_bar_width, big_hp_bar_height), border_radius=10)
     pygame.draw.rect(game.screen, (255, 80, 80), (bar_x, bar_y, int(big_hp_bar_width * hp_ratio), big_hp_bar_height), border_radius=10)
     pygame.draw.rect(game.screen, (0, 0, 0), (bar_x, bar_y, big_hp_bar_width, big_hp_bar_height), 4, border_radius=10)
-    hp_text = f"HP: {game.player.hp} / {game.player.max_hp}"
+    hp_text = f"HP: {int(game.player.hp)} / {game.player.max_hp}"
     text_surf = font.render(hp_text, True, (255, 255, 255))
     game.screen.blit(text_surf, (bar_x + 12, bar_y + big_hp_bar_height // 2 - text_surf.get_height() // 2))
 
@@ -31,7 +31,7 @@ def draw_game_frame(game, dt):
     pygame.draw.rect(game.screen, (40, 40, 40), (bar_x, stamina_y, stamina_bar_width, stamina_bar_height), border_radius=10)
     pygame.draw.rect(game.screen, (80, 200, 80), (bar_x, stamina_y, int(stamina_bar_width * stamina_ratio), stamina_bar_height), border_radius=10)
     pygame.draw.rect(game.screen, (0, 0, 0), (bar_x, stamina_y, stamina_bar_width, stamina_bar_height), 3, border_radius=10)
-    stamina_text = f"Stamina: {game.player.stamina} / {game.player.vitality * 20}"
+    stamina_text = f"Stamina: {int(game.player.stamina)} / {game.player.vitality * 20}"
     stamina_surf = font.render(stamina_text, True, (255, 255, 255))
     game.screen.blit(stamina_surf, (bar_x + 12, stamina_y + stamina_bar_height // 2 - stamina_surf.get_height() // 2))
 
@@ -43,7 +43,7 @@ def draw_game_frame(game, dt):
     pygame.draw.rect(game.screen, (40, 40, 40), (bar_x, mana_y, mana_bar_width, mana_bar_height), border_radius=10)
     pygame.draw.rect(game.screen, (80, 80, 200), (bar_x, mana_y, int(mana_bar_width * mana_ratio), mana_bar_height), border_radius=10)
     pygame.draw.rect(game.screen, (0, 0, 0), (bar_x, mana_y, mana_bar_width, mana_bar_height), 3, border_radius=10)
-    mana_text = f"Mana: {game.player.mana} / {game.player.max_mana}"
+    mana_text = f"Mana: {int(game.player.mana)} / {game.player.max_mana}"
     mana_surf = font.render(mana_text, True, (255, 255, 255))
     game.screen.blit(mana_surf, (bar_x + 12, mana_y + mana_bar_height // 2 - mana_surf.get_height() // 2))
 
@@ -55,7 +55,7 @@ def draw_game_frame(game, dt):
     pygame.draw.rect(game.screen, (40, 40, 40), (bar_x, xp_y, xp_bar_width, xp_bar_height), border_radius=10)
     pygame.draw.rect(game.screen, (255, 215, 0), (bar_x, xp_y, int(xp_bar_width * xp_ratio), xp_bar_height), border_radius=10)
     pygame.draw.rect(game.screen, (0, 0, 0), (bar_x, xp_y, xp_bar_width, xp_bar_height), 2, border_radius=10)
-    xp_text = f"XP: {game.player.xp} / {game.player.max_xp}   Level: {game.player.level}"
+    xp_text = f"XP: {int(game.player.xp)} / {game.player.max_xp}   Level: {game.player.level}"
     xp_surf = font.render(xp_text, True, (255, 255, 255))
     game.screen.blit(xp_surf, (bar_x + 12, xp_y + xp_bar_height // 2 - xp_surf.get_height() // 2))
 
@@ -218,4 +218,113 @@ def draw_game_frame(game, dt):
             y = fireball_center[1] - fireball_glow_radius
             darkness.blit(mask, (x, y), special_flags=pygame.BLEND_RGBA_SUB)
     game.screen.blit(darkness, (0, 0))
+    pygame.display.flip()
+
+def draw_inventory_overlay(game, tab_index=0):
+    overlay = pygame.Surface((game.screen.get_width(), game.screen.get_height()), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 180))
+    game.screen.blit(overlay, (0, 0))
+    font = pygame.font.SysFont("arial", 48, bold=True)
+
+    # --- Tabs ---
+    tab_names = ["Inventory", "Stats", "Skills"]
+    tab_font = pygame.font.SysFont("arial", 32, bold=True)
+    tab_w = 220
+    tab_h = 48
+    tab_y = 40
+    tab_x_start = game.screen.get_width() // 2 - tab_w * len(tab_names) // 2
+    for i, name in enumerate(tab_names):
+        tab_x = tab_x_start + i * tab_w
+        color = (255, 215, 0) if i == tab_index else (120, 120, 120)
+        pygame.draw.rect(game.screen, color, (tab_x, tab_y, tab_w, tab_h), border_radius=12)
+        tab_text = tab_font.render(name, True, (0, 0, 0))
+        game.screen.blit(tab_text, (tab_x + tab_w // 2 - tab_text.get_width() // 2, tab_y + tab_h // 2 - tab_text.get_height() // 2))
+
+    # --- Tab content ---
+    if tab_index == 0:
+        # Inventory tab
+        title = font.render("INVENTORY", True, (255, 255, 255))
+        game.screen.blit(title, (game.screen.get_width() // 2 - title.get_width() // 2, 120))
+        inv_font = pygame.font.SysFont("arial", 28)
+        inv_text = inv_font.render("Equipment and items will be shown here.", True, (220, 220, 220))
+        game.screen.blit(inv_text, (game.screen.get_width() // 2 - inv_text.get_width() // 2, 220))
+        # TODO: Draw equipped items and inventory slots
+
+    elif tab_index == 1:
+        # Stats tab
+        title = font.render("PLAYER STATS", True, (255, 255, 255))
+        game.screen.blit(title, (game.screen.get_width() // 2 - title.get_width() // 2, 120))
+        stats_font = pygame.font.SysFont("arial", 28)
+        stats = [
+            f"Level: {game.player.level}",
+            f"XP: {int(game.player.xp)} / {game.player.max_xp}",
+            f"HP: {int(game.player.hp)} / {game.player.max_hp}",
+            f"Mana: {int(game.player.mana)} / {game.player.max_mana}",
+            f"Stamina: {int(game.player.stamina)} / {game.player.vitality * 20}",
+        ]
+        for i, line in enumerate(stats):
+            stat_surf = stats_font.render(line, True, (220, 220, 220))
+            game.screen.blit(stat_surf, (game.screen.get_width() // 2 - stat_surf.get_width() // 2, 220 + i * 40))
+        # Regeneration calculations (rounded)
+        hp_regen = int(round(10 * game.player.vitality * (game.player.level * 0.2)))
+        mana_regen = int(round(10 * game.player.intelligence * (game.player.level * 0.2)))
+        regen_font = pygame.font.SysFont("arial", 24, bold=True)
+        hp_regen_text = f"HP Regeneration: {hp_regen} / sec"
+        mana_regen_text = f"Mana Regeneration: {mana_regen} / sec"
+        hp_regen_surf = regen_font.render(hp_regen_text, True, (120, 255, 120))
+        mana_regen_surf = regen_font.render(mana_regen_text, True, (120, 180, 255))
+        game.screen.blit(hp_regen_surf, (game.screen.get_width() // 2 - hp_regen_surf.get_width() // 2, 220 + 6 * 40))
+        game.screen.blit(mana_regen_surf, (game.screen.get_width() // 2 - mana_regen_surf.get_width() // 2, 220 + 7 * 40))
+        # Potential damage and magical damage
+        dmg_font = pygame.font.SysFont("arial", 24, bold=True)
+        phys_dmg = f"Potential Damage: {game.player.strength * 10} - {game.player.strength * 10 + 9}"
+        magic_dmg = f"Potential Magical Damage: {game.player.intelligence * 10} - {game.player.intelligence * 10 + 9}"
+        phys_surf = dmg_font.render(phys_dmg, True, (255, 180, 80))
+        magic_surf = dmg_font.render(magic_dmg, True, (80, 180, 255))
+        game.screen.blit(phys_surf, (game.screen.get_width() // 2 - phys_surf.get_width() // 2, 220 + 8 * 40))
+        game.screen.blit(magic_surf, (game.screen.get_width() // 2 - magic_surf.get_width() // 2, 220 + 9 * 40))
+        # Stat points (now below damage)
+        points_font = pygame.font.SysFont("arial", 24, bold=True)
+        points_text = f"Unassigned Stat Points: {game.player.stat_points}"
+        points_surf = points_font.render(points_text, True, (255, 215, 0))
+        game.screen.blit(points_surf, (game.screen.get_width() // 2 - points_surf.get_width() // 2, 220 + 10 * 40))
+        # Stat assign buttons (centered and spaced)
+        stat_names = ["Strength", "Dexterity", "Vitality", "Intelligence"]
+        stat_values = [game.player.strength, game.player.dexterity, game.player.vitality, game.player.intelligence]
+        btn_font = pygame.font.SysFont("arial", 28, bold=True)
+        btn_w, btn_h = 32, 32
+        btn_x = game.screen.get_width() // 2 + 180
+        btn_y_start = 220 + 11 * 40
+        stat_x = game.screen.get_width() // 2 - 120
+        for i, (name, value) in enumerate(zip(stat_names, stat_values)):
+            stat_line = f"{name}: {value}"
+            stat_surf = stats_font.render(stat_line, True, (220, 220, 220))
+            y_pos = btn_y_start + i * 56
+            game.screen.blit(stat_surf, (stat_x, y_pos))
+            # Draw [+] button
+            btn_rect = pygame.Rect(btn_x, y_pos, btn_w, btn_h)
+            color = (80, 200, 80) if game.player.stat_points > 0 else (120, 120, 120)
+            pygame.draw.rect(game.screen, color, btn_rect, border_radius=8)
+            plus_surf = btn_font.render("+", True, (0, 0, 0))
+            game.screen.blit(plus_surf, (btn_rect.x + btn_w // 2 - plus_surf.get_width() // 2, btn_rect.y + btn_h // 2 - plus_surf.get_height() // 2))
+    elif tab_index == 2:
+        # Skills tab
+        title = font.render("SKILLS", True, (255, 255, 255))
+        game.screen.blit(title, (game.screen.get_width() // 2 - title.get_width() // 2, 120))
+        skills_font = pygame.font.SysFont("arial", 28)
+        skills = [
+            "Fireball   [Select]",
+            # TODO: List more skills and selection logic
+        ]
+        for i, line in enumerate(skills):
+            skill_surf = skills_font.render(line, True, (220, 220, 220))
+            game.screen.blit(skill_surf, (game.screen.get_width() // 2 - skill_surf.get_width() // 2, 220 + i * 40))
+
+    # --- Instructions ---
+    hint_font = pygame.font.SysFont("arial", 24)
+    hint = hint_font.render("Press I or Tab to close | ←/→ or 1/2/3 to switch tabs", True, (180, 180, 180))
+    game.screen.blit(hint, (game.screen.get_width() // 2 - hint.get_width() // 2, game.screen.get_height() - 80))
+    pygame.display.flip()
+    hint = hint_font.render("Press I or Tab to close | ←/→ or 1/2/3 to switch tabs", True, (180, 180, 180))
+    game.screen.blit(hint, (game.screen.get_width() // 2 - hint.get_width() // 2, game.screen.get_height() - 80))
     pygame.display.flip()
