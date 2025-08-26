@@ -164,6 +164,19 @@ class Game:
             self.space.add(body, shape)
             self.wall_shapes.append(shape)
 
+        # --- Add light mask cache ---
+        self.light_mask_cache = {}
+
+    def get_light_mask(self, radius):
+        # --- Add this helper method for caching ---
+        if radius not in self.light_mask_cache:
+            mask = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
+            for r in range(radius, 0, -1):
+                alpha = int(255 * (1 - r / radius))
+                pygame.draw.circle(mask, (0, 0, 0, alpha), (radius, radius), r)
+            self.light_mask_cache[radius] = mask
+        return self.light_mask_cache[radius]
+
     def run(self):
         print("Game loop started")  # Debug: confirm loop starts
         running = True
@@ -565,7 +578,6 @@ class Game:
             darkness.fill((0, 0, 0, self.darkness_alpha))
 
             # Torch glow
-            # FIX: Ensure torch_center is defined before use
             if self.torch_on_ground or self.torch_following:
                 torch_px, torch_py = world_to_screen(
                     self.torch_ground_pos[0] - 15 + self.torch_wiggle_offset[0],
@@ -577,21 +589,28 @@ class Game:
                 torch_center = None
 
             if torch_center:
-                light_mask = draw_light_mask(torch_center, self.torch_glow_radius)
-                darkness.blit(light_mask, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+                # --- Use cached mask ---
+                mask = self.get_light_mask(self.torch_glow_radius)
+                x = torch_center[0] - self.torch_glow_radius
+                y = torch_center[1] - self.torch_glow_radius
+                darkness.blit(mask, (x, y), special_flags=pygame.BLEND_RGBA_SUB)
 
             # Fireball and explosion glow
-            fireball_glow_radius = 80  # Normal fireball glow
-            explosion_glow_radius = 180  # Bigger explosion glow
+            fireball_glow_radius = 80
+            explosion_glow_radius = 180
             for fireball in self.fireballs:
                 fx, fy = world_to_screen(fireball.x, fireball.y, self.camera.x, self.camera.y)
                 fireball_center = (int(fx), int(fy))
                 if fireball.exploding:
-                    explosion_light = draw_light_mask(fireball_center, explosion_glow_radius)
-                    darkness.blit(explosion_light, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+                    mask = self.get_light_mask(explosion_glow_radius)
+                    x = fireball_center[0] - explosion_glow_radius
+                    y = fireball_center[1] - explosion_glow_radius
+                    darkness.blit(mask, (x, y), special_flags=pygame.BLEND_RGBA_SUB)
                 else:
-                    fireball_light = draw_light_mask(fireball_center, fireball_glow_radius)
-                    darkness.blit(fireball_light, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+                    mask = self.get_light_mask(fireball_glow_radius)
+                    x = fireball_center[0] - fireball_glow_radius
+                    y = fireball_center[1] - fireball_glow_radius
+                    darkness.blit(mask, (x, y), special_flags=pygame.BLEND_RGBA_SUB)
 
             self.screen.blit(darkness, (0, 0))
 
