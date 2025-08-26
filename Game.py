@@ -398,7 +398,11 @@ class Game:
                             break
 
             self.fireballs = [f for i, f in enumerate(self.fireballs) if i not in fireballs_to_remove]
-            self.world.enemies = [e for i, e in enumerate(self.world.enemies) if i not in enemies_to_remove]
+            # Remove defeated enemies and their hitboxes in sync
+            if enemies_to_remove:
+                self.world.enemies = [e for i, e in enumerate(self.world.enemies) if i not in enemies_to_remove]
+                self.enemy_bodies = [b for i, b in enumerate(self.enemy_bodies) if i not in enemies_to_remove]
+                self.enemy_shapes = [s for i, s in enumerate(self.enemy_shapes) if i not in enemies_to_remove]
 
             # Update targets' respawn timers
             for target in self.world.targets:
@@ -474,7 +478,6 @@ class Game:
                 ex, ey = world_to_screen(enemy_body.position[0], enemy_body.position[1], self.camera.x, self.camera.y)
                 radius = int(self.enemy_shapes[i].radius)
                 pygame.draw.circle(self.screen, (0, 255, 0), (int(ex), int(ey)), radius, 2)
-                # White overlay for damage hitbox (slightly smaller)
                 pygame.draw.circle(self.screen, (255, 255, 255), (int(ex), int(ey)), radius - 4, 2)
                 # Dotted inlay for enemy attack range (e.g., 80px)
                 attack_range = 80
