@@ -9,8 +9,19 @@ class Player:
     y: float
     w: int = 28
     h: int = 36
+    # --- Stats ---
+    strength: int = 1
+    dexterity: int = 1
+    vitality: int = 1
+    intelligence: int = 1
+    # --- Derived attributes ---
     speed: float = 240.0
     sprint_mult: float = 1.6
+    stamina: int = 20
+    max_hp: int = 100
+    hp: int = 100
+    max_mana: int = 100
+    mana: int = 100
     last_dir: tuple[float, float] = (1, 0)
     facing_left: bool = False
     anim_dir: str = "forward"
@@ -23,9 +34,22 @@ class Player:
     sword_anim_index: int = 0
     sword_anim_timer: float = 0.0
     sword_anim_speed: float = 0.04 # seconds per sword frame
-    hp: int = 100
-    max_hp: int = 100
     game_ref: object = None  # Reference to Game instance for damage overlay
+    xp: int = 0
+    max_xp: int = 10
+    level: int = 1
+
+    def __post_init__(self):
+        # Scale stats
+        self.max_hp = self.vitality * 100
+        self.hp = self.max_hp
+        self.stamina = self.vitality * 20
+        self.speed = 180.0 + self.dexterity * 20  # base + dex scaling
+        self.max_mana = self.intelligence * 100
+        self.mana = self.max_mana
+        self.level = 1
+        self.xp = 0
+        self.max_xp = 10
 
     def start_sword_swing(self):
         start_sword_swing(self)
@@ -81,7 +105,7 @@ class Player:
                     r.top = s.bottom
         self.y = r.centery
 
-        # Animation frame logic (optional, keep as before)
+    def update_animation(self, dt: float):
         if self.moving:
             self.anim_timer += dt
             if self.anim_timer >= self.anim_speed:
@@ -120,3 +144,15 @@ class Player:
         sword_x = px + offset_x + 40  # +40 to undo px offset
         sword_y = py + offset_y + 60  # +60 to undo py offset
         return pygame.Rect(int(sword_x), int(sword_y), SWORD_DRAW_SIZE[0], SWORD_DRAW_SIZE[1])
+
+    def add_xp(self, amount: int):
+        self.xp += amount
+        while self.xp >= self.max_xp:
+            self.xp -= self.max_xp
+            self.level += 1
+            self.max_xp = 10 * self.level
+            # Optionally: increase stats on level up
+            # self.strength += 1
+            # self.vitality += 1
+            # self.dexterity += 1
+            # self.intelligence += 1

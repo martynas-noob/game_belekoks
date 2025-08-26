@@ -7,7 +7,7 @@ import math
 import random
 
 class World:
-    def __init__(self, layout: list[str], enemy_imgs: list, target_imgs: list, door_img=None, door_img_open=None):
+    def __init__(self, layout: list[str], enemy_imgs: list, target_imgs: list, door_img=None, door_img_open=None, game_level=1, monster_level_min=1, monster_level_max=1):
         self.layout = layout
         self.w = len(layout[0])
         self.h = len(layout)
@@ -24,13 +24,17 @@ class World:
                 elif MAP_CHARS.get(ch, 0) == 2:
                     img = random.choice(enemy_imgs)
                     img = pygame.transform.scale(img, (40, 60)).convert_alpha()
-                    self.enemies.append(Enemy(x*TILE_SIZE+TILE_SIZE/2, y*TILE_SIZE+TILE_SIZE/2, 28, 36, img=img))
+                    # Monster level: monster_level_min..monster_level_max
+                    level = random.randint(monster_level_min, monster_level_max)
+                    self.enemies.append(Enemy(x*TILE_SIZE+TILE_SIZE/2, y*TILE_SIZE+TILE_SIZE/2, 28, 36, img=img, level=level))
                 elif MAP_CHARS.get(ch, 0) == 3:
                     img = random.choice(enemy_imgs)
                     img = pygame.transform.scale(img, (int(40*1.5), int(60*1.5))).convert_alpha()
                     new_w = int(28 * 1.5)
                     new_h = int(36 * 1.5)
-                    self.enemies.append(Enemy(x*TILE_SIZE+TILE_SIZE/2, y*TILE_SIZE+TILE_SIZE/2, new_w, new_h, img=img))
+                    # Big monster level: monster_level_min..monster_level_max
+                    level = random.randint(monster_level_min, monster_level_max)
+                    self.enemies.append(Enemy(x*TILE_SIZE+TILE_SIZE/2, y*TILE_SIZE+TILE_SIZE/2, new_w, new_h, img=img, level=level))
                 elif MAP_CHARS.get(ch, 0) == 4:
                     img = random.choice(target_imgs)
                     img = pygame.transform.scale(img, (40, 60)).convert_alpha()

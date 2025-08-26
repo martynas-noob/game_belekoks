@@ -28,11 +28,17 @@ def draw_damage_numbers(game, screen, camera, dt):
         screen.blit(dmg_surf, (px - dmg_surf.get_width() // 2, py))
 
 def show_health_bar(game, target, duration=2.0):
-    """Show or refresh the health bar for a target."""
+    """Show or refresh the health bar for a target or enemy."""
+    # Use max_hp from the object if present, otherwise fallback
+    max_hp = getattr(target, "max_hp", None)
+    if max_hp is None:
+        max_hp = getattr(target, "hit_points", None)
+    if max_hp is None:
+        max_hp = getattr(target, "max_hit_points", 300)
     game.target_health_bars[id(target)] = {
         "timer": duration,
         "hp": target.hit_points,
-        "max_hp": getattr(target, "max_hit_points", 300),
+        "max_hp": max_hp,
         "x": target.x,
         "y": target.y - 60
     }
