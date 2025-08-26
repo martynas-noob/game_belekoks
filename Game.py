@@ -11,7 +11,7 @@ print("Pymunk version:", pymunk.version)  # Add this for debugging
 import config.config as game_config  # Add this for access to all levels
 
 from config.config import (
-    WIN_W, WIN_H, FPS, LEVEL_1, COL_BG, world_to_screen
+    WIN_W, WIN_H, FPS, LEVEL_1, COL_BG, world_to_screen, LEVEL_NAMES
 )
 from config.player import Player
 from config.enemy import Enemy
@@ -121,6 +121,9 @@ class Game:
         self.level_index = level_index  # Track current level index
         self.prev_level_index = prev_level_index  # Track previous level index for backtracking
         self.entry_door_idx = entry_door_idx  # Track which door was used to enter
+        # Add this before self.load_level(...)
+        self.defeated_enemies_per_level = {}  # Track defeated enemies by level index
+        self.initial_enemy_positions_per_level = {}  # Track initial enemy positions per level
         self.load_level(self.level_index, entry_door_idx=self.entry_door_idx)
         self.fireballs = []
         self.torch_on_ground = True
@@ -202,6 +205,30 @@ class Game:
             self.level_index = 0
         self.world = World(level_layout, self.enemy_imgs, self.target_imgs, door_img=self.door_img, door_img_open=self.door_img_open)
         self.fireballs = []
+        self.enemy_bodies = []
+        self.enemy_shapes = []
+        # --- Track and filter enemies by initial positions ---
+        # Save initial enemy positions for this level if not already saved
+        if self.level_index not in self.initial_enemy_positions_per_level:
+            self.initial_enemy_positions_per_level[self.level_index] = [
+                (enemy.x, enemy.y) for enemy in self.world.enemies
+            ]
+        # Remove defeated enemies for this level
+        defeated = self.defeated_enemies_per_level.get(self.level_index, set())
+        filtered_enemies = []
+        for enemy in self.world.enemies:
+            enemy_id = (enemy.x, enemy.y)
+            if enemy_id not in defeated:
+                filtered_enemies.append(enemy)
+        self.world.enemies = filtered_enemies
+        for enemy in self.world.enemies:
+            body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+            body.position = (enemy.x, enemy.y)
+            shape = pymunk.Circle(body, 20)
+            shape.collision_type = 2
+            self.space.add(body, shape)
+            self.enemy_bodies.append(body)
+            self.enemy_shapes.append(shape)
         # Find all doors in the level
         door_positions = []
         for y, row in enumerate(level_layout):
@@ -268,6 +295,7 @@ class Game:
         self.door_positions = door_positions  # Store for later use
         self.door_transition = None  # (idx, start_time, direction)
         self.door_transition_duration = 2.0  # seconds
+        self.level_name_timer = 5.0  # Show level name for 5 seconds
 
     def run(self):
         print("Game loop started")  # Debug: confirm loop starts
@@ -347,7 +375,9 @@ class Game:
                             # Restart the current level
                             self.player.x, self.player.y = 200, 200  # Reset player position
                             self.player.hp = self.player.max_hp  # Restore player health
-                            self.world.reset()  # Reset the world (enemies, targets, etc.)
+                            # self.world.reset()  # Reset the world (enemies, targets, etc.)
+                            # Instead, reload the current level:
+                            self.load_level(self.level_index, entry_door_idx=self.entry_door_idx)
                             game_over = False  # Reset game over state
                             next_level_triggered = False  # Ensure next level is not triggered
                     elif e.type == pygame.MOUSEBUTTONDOWN:
@@ -357,7 +387,7 @@ class Game:
             # --- Door transition animation logic ---
             if self.door_transition is not None:
                 idx, start_time, direction = self.door_transition
-                elapsed = pygame.time.get_ticks() / 1000.0 - start_time
+                elapsed = pygame.time.get_ticks() / 500.0 - start_time
                 # Open the door visually
                 if 0 <= idx < len(getattr(self.world, "doors", [])):
                     getattr(self.world, "doors", [])[idx].open = True
@@ -559,6 +589,20 @@ class Game:
                         if enemy.hit_points <= 0:
                             self.slime_death_sound.play()
                             enemies_to_remove.add(i)
+                            # --- Track defeated enemy by initial position ---
+                            # Use initial positions from initial_enemy_positions_per_level
+                            initial_positions = self.initial_enemy_positions_per_level.get(self.level_index, [])
+                            # Find the closest initial position to this enemy
+                            min_dist = float('inf')
+                            closest_pos = None
+                            for pos in initial_positions:
+                                dist = math.hypot(enemy.x - pos[0], enemy.y - pos[1])
+                                if dist < min_dist:
+                                    min_dist = dist
+                                    closest_pos = pos
+                            if closest_pos is not None:
+                                defeated = self.defeated_enemies_per_level.setdefault(self.level_index, set())
+                                defeated.add(closest_pos)
                 # Remove defeated enemies and their hitboxes
                 self.world.enemies = [e for i, e in enumerate(self.world.enemies) if i not in enemies_to_remove]
                 self.enemy_bodies = [b for i, b in enumerate(self.enemy_bodies) if i not in enemies_to_remove]
@@ -602,6 +646,18 @@ class Game:
                             if enemy.hit_points <= 0:
                                 self.slime_death_sound.play()
                                 enemies_to_remove.add(i)
+                                # --- Track defeated enemy by initial position ---
+                                initial_positions = self.initial_enemy_positions_per_level.get(self.level_index, [])
+                                min_dist = float('inf')
+                                closest_pos = None
+                                for pos in initial_positions:
+                                    dist = math.hypot(enemy.x - pos[0], enemy.y - pos[1])
+                                    if dist < min_dist:
+                                        min_dist = dist
+                                        closest_pos = pos
+                                if closest_pos is not None:
+                                    defeated = self.defeated_enemies_per_level.setdefault(self.level_index, set())
+                                    defeated.add(closest_pos)
                         break
                 else:
                     for t_idx, target in enumerate(self.world.targets):
@@ -658,7 +714,11 @@ class Game:
 
             # Draw enemy sprites with animation FIRST (before hitboxes)
             for i, enemy in enumerate(self.world.enemies):
-                ex, ey = world_to_screen(self.enemy_bodies[i].position[0], self.enemy_bodies[i].position[1], self.camera.x, self.camera.y)
+                # Defensive: only access enemy_bodies if index exists
+                if i < len(self.enemy_bodies):
+                    ex, ey = world_to_screen(self.enemy_bodies[i].position[0], self.enemy_bodies[i].position[1], self.camera.x, self.camera.y)
+                else:
+                    ex, ey = world_to_screen(enemy.x, enemy.y, self.camera.x, self.camera.y)
                 enemy.draw(self.screen, self.camera.x, self.camera.y)
 
             # Draw target sprites
@@ -697,8 +757,12 @@ class Game:
 
             # Enemy hitboxes (circle, green) and damage overlay (white)
             for i, enemy_body in enumerate(self.enemy_bodies):
-                ex, ey = world_to_screen(enemy_body.position[0], enemy_body.position[1], self.camera.x, self.camera.y)
-                radius = int(self.enemy_shapes[i].radius)
+                if i < len(self.enemy_shapes):
+                    ex, ey = world_to_screen(enemy_body.position[0], enemy_body.position[1], self.camera.x, self.camera.y)
+                    radius = int(self.enemy_shapes[i].radius)
+                else:
+                    ex, ey = 0, 0
+                    radius = 20
                 pygame.draw.circle(self.screen, (0, 255, 0), (int(ex), int(ey)), radius, 2)
                 pygame.draw.circle(self.screen, (255, 255, 255), (int(ex), int(ey)), radius - 4, 2)
                 # Dotted inlay for enemy attack range (e.g., 80px)
@@ -709,8 +773,9 @@ class Game:
                     dot_y = int(ey + math.sin(rad) * attack_range)
                     pygame.draw.circle(self.screen, (200, 200, 200), (dot_x, dot_y), 3)
                 # Draw enemy visibility range (thin yellow circle)
-                visibility_range = getattr(self.world.enemies[i], "visibility_range", 240)
-                pygame.draw.circle(self.screen, (255, 255, 0), (int(ex), int(ey)), int(visibility_range), 1)
+                if i < len(self.world.enemies):
+                    visibility_range = getattr(self.world.enemies[i], "visibility_range", 240)
+                    pygame.draw.circle(self.screen, (255, 255, 0), (int(ex), int(ey)), int(visibility_range), 1)
 
             # Torch hitbox (rect, purple)
             if self.torch_on_ground or self.torch_following:
@@ -883,7 +948,9 @@ class Game:
                 other_enemy_rects = [e.draw_enemy() for j, e in enumerate(self.world.enemies) if j != i]
                 player_rect = self.player.rect()
                 enemy.update(dt, monster_target, self.world.solids, player_rect, other_enemy_rects, player=self.player)
-                self.enemy_bodies[i].position = (enemy.x, enemy.y)
+                # Defensive: only update enemy_bodies if index exists
+                if i < len(self.enemy_bodies):
+                    self.enemy_bodies[i].position = (enemy.x, enemy.y)
                 if enemy.x != prev_x or enemy.y != prev_y:
                     slime_moving = True
 
@@ -893,7 +960,6 @@ class Game:
             hp_ratio = max(0, self.player.hp / self.player.max_hp)
             pygame.draw.rect(self.screen, (40, 40, 40), (30, 30, hp_bar_width, hp_bar_height), border_radius=6)
             pygame.draw.rect(self.screen, (255, 80, 80), (30, 30, int(hp_bar_width * hp_ratio), hp_bar_height), border_radius=6)
-            pygame.draw.rect(self.screen, (0, 0, 0), (30, 30, hp_bar_width, hp_bar_height), 2, border_radius=6)
 
             # --- Draw player HP bar (big, top left) ---
             big_hp_bar_width = 400
