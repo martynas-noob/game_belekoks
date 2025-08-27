@@ -246,10 +246,139 @@ def draw_inventory_overlay(game, tab_index=0):
         title = font.render("INVENTORY", True, (255, 255, 255))
         game.screen.blit(title, (game.screen.get_width() // 2 - title.get_width() // 2, 120))
         inv_font = pygame.font.SysFont("arial", 28)
-        inv_text = inv_font.render("Equipment and items will be shown here.", True, (220, 220, 220))
-        game.screen.blit(inv_text, (game.screen.get_width() // 2 - inv_text.get_width() // 2, 220))
-        # TODO: Draw equipped items and inventory slots
+        slot_font = pygame.font.SysFont("arial", 22, bold=True)
 
+        # Divide screen
+        left_x = game.screen.get_width() // 4
+        right_x = 3 * game.screen.get_width() // 4
+        center_y = 220
+
+        # --- Equipment HUD (left side) ---
+        slot_size = 64
+        slot_gap = 24
+        equip_slots = {
+            "Helmet": (left_x, center_y),
+            "Armor": (left_x, center_y + slot_size + slot_gap),
+            "Main Hand": (left_x - slot_size - slot_gap, center_y + 2 * (slot_size + slot_gap)),
+            "Off Hand": (left_x + slot_size + slot_gap, center_y + 2 * (slot_size + slot_gap)),
+            "Boots": (left_x, center_y + 3 * (slot_size + slot_gap)),
+        }
+        acc_y = center_y + 4 * (slot_size + slot_gap)
+        acc_x_start = left_x - 2 * (slot_size + slot_gap) + slot_size // 2
+        accessory_slots = []
+        for i in range(4):
+            accessory_slots.append((acc_x_start + i * (slot_size + slot_gap), acc_y))
+
+        # Draw equipment slots and items
+        slot_rects = {}
+        hovered_item = None
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+
+        # Draw equipment slots and items
+        slot_rects = {}
+        for name, (sx, sy) in equip_slots.items():
+            rect = pygame.Rect(sx - slot_size // 2, sy - slot_size // 2, slot_size, slot_size)
+            slot_rects[name] = rect
+            pygame.draw.rect(game.screen, (80, 80, 80), rect, border_radius=10)
+            pygame.draw.rect(game.screen, (160, 160, 160), rect, 3, border_radius=10)
+            label = slot_font.render(name, True, (220, 220, 220))
+            game.screen.blit(label, (sx - label.get_width() // 2, sy + slot_size // 2 + 4))
+            item = game.player.equipment.get(name)
+            if item is not None:
+                if hasattr(item, "image") and item.image:
+                    item_img = pygame.transform.scale(item.image, (slot_size - 12, slot_size - 12))
+                    game.screen.blit(item_img, (sx - (slot_size - 12) // 2, sy - (slot_size - 12) // 2))
+                elif item.name == "Sword" and hasattr(game, "sword_img") and game.sword_img:
+                    sword_img = pygame.transform.scale(game.sword_img, (slot_size - 12, slot_size - 12))
+                    game.screen.blit(sword_img, (sx - (slot_size - 12) // 2, sy - (slot_size - 12) // 2))
+                else:
+                    pygame.draw.circle(game.screen, (200, 200, 80), (sx, sy), slot_size // 3)
+                if rect.collidepoint(mouse_x, mouse_y):
+                    hovered_item = item
+
+        for i, (sx, sy) in enumerate(accessory_slots):
+            name = f"Accessory {i+1}"
+            rect = pygame.Rect(sx - slot_size // 2, sy - slot_size // 2, slot_size, slot_size)
+            slot_rects[name] = rect
+            pygame.draw.rect(game.screen, (80, 80, 80), rect, border_radius=10)
+            pygame.draw.rect(game.screen, (160, 160, 160), rect, 3, border_radius=10)
+            label = slot_font.render(name, True, (220, 220, 220))
+            game.screen.blit(label, (sx - label.get_width() // 2, sy + slot_size // 2 + 4))
+            item = game.player.equipment.get(name)
+            if item is not None:
+                if hasattr(item, "image") and item.image:
+                    item_img = pygame.transform.scale(item.image, (slot_size - 12, slot_size - 12))
+                    game.screen.blit(item_img, (sx - (slot_size - 12) // 2, sy - (slot_size - 12) // 2))
+                else:
+                    pygame.draw.circle(game.screen, (200, 200, 80), (sx, sy), slot_size // 3)
+                if rect.collidepoint(mouse_x, mouse_y):
+                    hovered_item = item
+
+        # Inventory grid (right side)
+        inv_cols, inv_rows = 5, 8
+        inv_slot_size = 56
+        inv_gap = 12
+        grid_start_x = right_x - ((inv_cols * inv_slot_size + (inv_cols - 1) * inv_gap) // 2)
+        grid_start_y = center_y
+        inv_rects = []
+        for row in range(inv_rows):
+            for col in range(inv_cols):
+                idx = row * inv_cols + col
+                sx = grid_start_x + col * (inv_slot_size + inv_gap)
+                sy = grid_start_y + row * (inv_slot_size + inv_gap)
+                rect = pygame.Rect(sx, sy, inv_slot_size, inv_slot_size)
+                inv_rects.append(rect)
+                pygame.draw.rect(game.screen, (60, 60, 60), rect, border_radius=8)
+                pygame.draw.rect(game.screen, (120, 120, 120), rect, 2, border_radius=8)
+                item = game.player.inventory[idx]
+                if item is not None:
+                    if hasattr(item, "image") and item.image:
+                        item_img = pygame.transform.scale(item.image, (inv_slot_size - 12, inv_slot_size - 12))
+                        game.screen.blit(item_img, (sx + (inv_slot_size - item_img.get_width()) // 2, sy + (inv_slot_size - item_img.get_height()) // 2))
+                    elif hasattr(item, "name") and item.name == "Sword" and hasattr(game, "sword_img") and game.sword_img:
+                        sword_img = pygame.transform.scale(game.sword_img, (inv_slot_size - 12, inv_slot_size - 12))
+                        game.screen.blit(sword_img, (sx + (inv_slot_size - sword_img.get_width()) // 2, sy + (inv_slot_size - sword_img.get_height()) // 2))
+                    else:
+                        pygame.draw.circle(game.screen, (200, 200, 80), (sx + inv_slot_size // 2, sy + inv_slot_size // 2), inv_slot_size // 3)
+                    if rect.collidepoint(mouse_x, mouse_y):
+                        hovered_item = item
+
+        # --- Drag and drop logic (simple click to move) ---
+        game._equip_slot_rects = slot_rects
+        game._inv_slot_rects = inv_rects
+
+        inv_text = inv_font.render("Click equipment/inventory slots to move items.", True, (220, 220, 220))
+        game.screen.blit(inv_text, (right_x - inv_text.get_width() // 2, grid_start_y + inv_rows * (inv_slot_size + inv_gap) + 32))
+
+        # --- Item stats hub ---
+        if hovered_item is not None:
+            hub_w, hub_h = 320, 180
+            hub_x = mouse_x + 24
+            hub_y = mouse_y + 24
+            # Prevent hub from going off screen
+            if hub_x + hub_w > game.screen.get_width():
+                hub_x = game.screen.get_width() - hub_w - 16
+            if hub_y + hub_h > game.screen.get_height():
+                hub_y = game.screen.get_height() - hub_h - 16
+            hub_rect = pygame.Rect(hub_x, hub_y, hub_w, hub_h)
+            pygame.draw.rect(game.screen, (30, 30, 30), hub_rect, border_radius=14)
+            pygame.draw.rect(game.screen, (160, 160, 160), hub_rect, 3, border_radius=14)
+            stat_font = pygame.font.SysFont("arial", 24, bold=True)
+            lines = [
+                f"Name: {getattr(hovered_item, 'name', '')}",
+                f"Type: {getattr(hovered_item, 'item_type', '')}",
+                f"Level: {getattr(hovered_item, 'level', 1)}"
+            ]
+            # Weapon stats
+            if hasattr(hovered_item, "attack_min") and hasattr(hovered_item, "attack_max") and hovered_item.attack_min is not None:
+                lines.append(f"Attack: {hovered_item.attack_min} - {hovered_item.attack_max}")
+            if hasattr(hovered_item, "attack_speed") and hovered_item.attack_speed is not None:
+                lines.append(f"Attack Speed: {hovered_item.attack_speed}")
+            # Add more stats here if needed
+
+            for i, line in enumerate(lines):
+                stat_surf = stat_font.render(line, True, (220, 220, 220))
+                game.screen.blit(stat_surf, (hub_x + 18, hub_y + 18 + i * 32))
     elif tab_index == 1:
         # Stats tab
         title = font.render("PLAYER STATS", True, (255, 255, 255))
@@ -275,14 +404,28 @@ def draw_inventory_overlay(game, tab_index=0):
         mana_regen_surf = regen_font.render(mana_regen_text, True, (120, 180, 255))
         game.screen.blit(hp_regen_surf, (game.screen.get_width() // 2 - hp_regen_surf.get_width() // 2, 220 + 6 * 40))
         game.screen.blit(mana_regen_surf, (game.screen.get_width() // 2 - mana_regen_surf.get_width() // 2, 220 + 7 * 40))
-        # Potential damage and magical damage
+
+        # --- Damage calculations ---
+        # Base damage (player's base melee damage range)
+        min_base = 1 + (game.player.strength - 1) * 5
+        max_base = 5 + (game.player.strength - 1) * 5
+        base_damage_text = f"Base Damage: {min_base} - {max_base}"
+
+        # Final damage (with weapon equipped)
+        weapon = game.player.equipment.get("Main Hand")
+        if weapon is not None and hasattr(weapon, "get_attack_damage") and weapon.attack_min is not None:
+            min_final = weapon.attack_min * min_base
+            max_final = weapon.attack_max * max_base
+            final_damage_text = f"Final Damage: {min_final} - {max_final}"
+        else:
+            final_damage_text = f"Final Damage: {min_base} - {max_base}"
+
         dmg_font = pygame.font.SysFont("arial", 24, bold=True)
-        phys_dmg = f"Potential Damage: {game.player.strength * 10} - {game.player.strength * 10 + 9}"
-        magic_dmg = f"Potential Magical Damage: {game.player.intelligence * 10} - {game.player.intelligence * 10 + 9}"
-        phys_surf = dmg_font.render(phys_dmg, True, (255, 180, 80))
-        magic_surf = dmg_font.render(magic_dmg, True, (80, 180, 255))
-        game.screen.blit(phys_surf, (game.screen.get_width() // 2 - phys_surf.get_width() // 2, 220 + 8 * 40))
-        game.screen.blit(magic_surf, (game.screen.get_width() // 2 - magic_surf.get_width() // 2, 220 + 9 * 40))
+        base_surf = dmg_font.render(base_damage_text, True, (255, 180, 80))
+        final_surf = dmg_font.render(final_damage_text, True, (80, 180, 255))
+        game.screen.blit(base_surf, (game.screen.get_width() // 2 - base_surf.get_width() // 2, 220 + 8 * 40))
+        game.screen.blit(final_surf, (game.screen.get_width() // 2 - final_surf.get_width() // 2, 220 + 9 * 40))
+
         # Stat points (now below damage)
         points_font = pygame.font.SysFont("arial", 24, bold=True)
         points_text = f"Unassigned Stat Points: {game.player.stat_points}"

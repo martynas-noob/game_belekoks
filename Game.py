@@ -23,6 +23,11 @@ from config.camera import Camera
 from config.utils import draw_light_mask
 from config.combat import show_damage_numbers, draw_damage_numbers, show_health_bar, update_health_bars, draw_health_bars
 from collision import Hitbox, check_entity_collision, resolve_enemy_collision
+from config.item_db import (
+    ITEM_SWORD, ITEM_STAFF, ITEM_BOW,
+    ITEM_HELMET, ITEM_ARMOR, ITEM_BOOTS, ITEM_RING
+)
+from config.player import Item
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -115,6 +120,27 @@ class Game:
         # Game state
         self.player = Player(200, 200)
         self.player.game_ref = self  # Set reference for damage overlay
+        # --- Place all items in inventory at game start ---
+        item_vars = [
+            ITEM_SWORD, ITEM_STAFF, ITEM_BOW,
+            ITEM_HELMET, ITEM_ARMOR, ITEM_BOOTS, ITEM_RING
+        ]
+        slot_map = {
+            "Sword": "Main Hand",
+            "Staff": "Main Hand",
+            "Bow": "Main Hand",
+            "Helmet": "Helmet",
+            "Armor": "Armor",
+            "Boots": "Boots",
+            "Ring": "Accessory 1"
+        }
+        for i, item_var in enumerate(item_vars):
+            # Assign correct slot for each item
+            item_name = item_var.get("name")
+            slot = slot_map.get(item_name, item_var.get("equip_slot"))
+            item_var["equip_slot"] = slot
+            if i < len(self.player.inventory):
+                self.player.inventory[i] = Item(**item_var)
         self.camera = Camera()
         # Provide a list of enemy/target images to World
         self.enemy_imgs = [self.monster_img_original, self.monster_img_alt, self.monster_img_boss]
@@ -381,6 +407,53 @@ class Game:
                             if btn_rect.collidepoint(mx, my):
                                 self.player.assign_stat(stat)
                                 break
+                    elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.inventory_tab == 0:
+                        mx, my = pygame.mouse.get_pos()
+                        # Equipment slots
+                        if hasattr(self, "_equip_slot_rects"):
+                            for slot_name, rect in self._equip_slot_rects.items():
+                                if rect.collidepoint(mx, my):
+                                    item = self.player.equipment.get(slot_name)
+                                    if item is not None:
+                                        # Find first empty inventory slot
+                                        for idx in range(len(self.player.inventory)):
+                                            if self.player.inventory[idx] is None:
+                                                self.player.inventory[idx] = item
+                                                self.player.equipment[slot_name] = None
+                                                break
+                                    break
+                        # Inventory slots
+                        if hasattr(self, "_inv_slot_rects"):
+                            for idx, rect in enumerate(self._inv_slot_rects):
+                                if rect.collidepoint(mx, my):
+                                    item = self.player.inventory[idx]
+                                    if item is not None:
+                                        slot_name = item.get_slot() if hasattr(item, "get_slot") else None
+                                        # Only allow placing item in its designated slot
+                                        if slot_name and slot_name in self.player.equipment:
+                                            current_equipped = self.player.equipment[slot_name]
+                                            if current_equipped is None:
+                                                self.player.equipment[slot_name] = item
+                                                self.player.inventory[idx] = None
+                                            else:
+                                                # Swap items
+                                                self.player.equipment[slot_name] = item
+                                                self.player.inventory[idx] = current_equipped
+                                        # Do not allow placing item in wrong slot
+                                    break
+                    elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.inventory_tab == 2:
+                        mx, my = pygame.mouse.get_pos()
+                        # Centered and spaced buttons
+                        btn_w, btn_h = 32, 32
+                        btn_x = self.screen.get_width() // 2 + 180
+                        btn_y_start = 220 + 11 * 40
+                        skill_names = ["Fireball", "Ice Shard", "Lightning Bolt"]
+                        for i, skill in enumerate(skill_names):
+                            btn_rect = pygame.Rect(btn_x, btn_y_start + i * 56, btn_w, btn_h)
+                            if btn_rect.collidepoint(mx, my):
+                                # Unlock and assign the skill to the player
+                                self.player.unlock_skill(skill)
+                                break
                 elif game_over:
                     if e.type == pygame.KEYDOWN:
                         if e.key == pygame.K_ESCAPE:
@@ -585,8 +658,21 @@ class Game:
             # Update sword swing animation and logic
             if sword_swing and not self.player.sword_swinging:
                 self.player.start_sword_swing()
-                # Sword damage based on strength
-                self.sword_swing_damage = random.randint(self.player.strength * 10, self.player.strength * 10 + 9)
+                weapon = self.player.equipment.get("Main Hand")
+                if weapon is not None and hasattr(weapon, "get_attack_damage"):
+                    # Roll weapon damage
+                    weapon_damage = weapon.get_attack_damage()
+                    # Roll player base melee damage: 1-5 for strength 1, 6-10 for strength 2, etc.
+                    min_dmg = 1 + (self.player.strength - 1) * 5
+                    max_dmg = 5 + (self.player.strength - 1) * 5
+                    player_base_melee_damage = random.randint(min_dmg, max_dmg)
+                    # Final damage is product of both rolls
+                    self.sword_swing_damage = weapon_damage * player_base_melee_damage
+                else:
+                    # No weapon: just roll player base melee damage
+                    min_dmg = 1 + (self.player.strength - 1) * 5
+                    max_dmg = 5 + (self.player.strength - 1) * 5
+                    self.sword_swing_damage = random.randint(min_dmg, max_dmg)
                 self.sword_swing_hit_targets = set()
                 self.sword_sound.play()
             if hasattr(self.player, "update_sword"):
@@ -713,7 +799,11 @@ class Game:
                         self.explosion_sound.play()
                     continue
                 for i, enemy in enumerate(self.world.enemies):
-                    enemy_rect = enemy.draw_enemy() if hasattr(enemy, "draw_enemy") else pygame.Rect(enemy.x-20, enemy.y-30, 40, 60)
+                    # Fix: correct ternary syntax for enemy_rect
+                    if hasattr(enemy, "draw_enemy"):
+                        enemy_rect = enemy.draw_enemy()
+                    else:
+                        enemy_rect = pygame.Rect(enemy.x-20, enemy.y-30, 40, 60)
                     if fireball.rect().colliderect(enemy_rect):
                         if not fireball.exploding:
                             fireball.exploding = True
@@ -864,7 +954,7 @@ class Game:
                     torch_rect = pygame.Rect(int(next_tx - 8), int(next_ty - 16), 16, 32)
                     player_rect = self.player.rect()
                     # Prevent torch from entering player's hitbox in follow mode
-                    if torch_rect.colliderect(player_rect):
+                    if torch_rect.collidepoint(player_rect.topleft):
                         # Do not update torch position if it would collide
                         pass
                     else:
@@ -900,7 +990,7 @@ class Game:
                         break
                 # Prevent torch from entering player's hitbox (rect)
                 player_rect = self.player.rect()
-                if torch_rect.colliderect(player_rect):
+                if torch_rect.collidepoint(player_rect.topleft):
                     collided = True
                     # Move torch back to previous position and bounce away
                     # Calculate direction away from player center
