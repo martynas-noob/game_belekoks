@@ -1,10 +1,9 @@
 import pygame
-from config.config import COL_WALL, COL_FLOOR_A, COL_FLOOR_B
-from config.config import MAP_CHARS, TILE_SIZE
+import math
+from config.config import TILE_SIZE, MAP_CHARS, COL_FLOOR_A, COL_FLOOR_B
 from config.enemy import Enemy
 from config.target import Target
 from config.skeleton import Skeleton  # <-- Add this import
-import math
 import random
 
 class World:
@@ -18,6 +17,11 @@ class World:
         self.doors: list = []  # Add this line
         self.door_img = door_img  # Store door image
         self.door_img_open = door_img_open  # Store open door image
+        # Load wall and ground textures
+        self.wall_texture = pygame.image.load("textures/map/wall.jpg").convert()
+        self.wall_texture = pygame.transform.scale(self.wall_texture, (TILE_SIZE, TILE_SIZE))
+        self.ground_texture = pygame.image.load("textures/map/ground.png").convert()
+        self.ground_texture = pygame.transform.scale(self.ground_texture, (TILE_SIZE, TILE_SIZE))
         for y, row in enumerate(level_layout):
             for x, ch in enumerate(row):
                 if MAP_CHARS.get(ch, 0) == 1:
@@ -86,12 +90,17 @@ class World:
                 world_x = tx*TILE_SIZE - cam_x
                 world_y = ty*TILE_SIZE - cam_y
                 r = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
-                ch = self.layout[ty][tx]
+                # Bounds checking for ty and tx
+                if ty < 0 or ty >= len(self.layout):
+                    continue  # Skip out-of-bounds rows
+                row = self.layout[ty]
+                if tx < 0 or tx >= len(row):
+                    continue  # Skip out-of-bounds columns
+                ch = row[tx]
                 if MAP_CHARS.get(ch, 0) == 1:
-                    pygame.draw.rect(surf, COL_WALL, r)
+                    surf.blit(self.wall_texture, r)
                 else:
-                    col = COL_FLOOR_A if (tx+ty) % 2 == 0 else COL_FLOOR_B
-                    pygame.draw.rect(surf, col, r)
+                    surf.blit(self.ground_texture, r)
 
         # Draw doors after tiles
         for door in getattr(self, "doors", []):
