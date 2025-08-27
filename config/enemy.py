@@ -32,6 +32,8 @@ class Enemy:
     attack_cooldown: float = 1.0
     attack_timer: float = 1.0
     visibility_range: int = 240  # Add this attribute for visibility range
+    torch_buffer_timer: float = 0.0  # Add buffer timer for torch following
+    torch_last_chase_pos: tuple = None
     # --- Idle movement attributes ---
     idle_dir: tuple[float, float] = (0.0, 0.0)
     idle_timer: float = 0.0
@@ -74,7 +76,7 @@ class Enemy:
         if not hasattr(self, "xp_reward") or self.xp_reward == 5:
             self.xp_reward = self.level * 5
 
-    def update(self, dt: float, target_pos, solids: list[pygame.Rect], player_rect: pygame.Rect, other_enemies: list[pygame.Rect], player=None):
+    def update(self, dt: float, target_pos, solids: list[pygame.Rect], player_rect: pygame.Rect, other_enemies: list[pygame.Rect], player=None, fairy=None):
         if self.cooldown > 0:
             self.cooldown -= dt
             return
@@ -82,6 +84,7 @@ class Enemy:
         chase_pos = (self.x, self.y)  # Idle by default
         player_in_range = False
         torch_in_range = False
+        fairy_in_range = False
 
         # Check player visibility
         if player is not None and self.sees_target(player.x, player.y):
@@ -91,11 +94,39 @@ class Enemy:
         elif hasattr(player, "game_ref") and hasattr(player.game_ref, "torch_ground_pos"):
             torch_pos = player.game_ref.torch_ground_pos
             if self.sees_target(torch_pos[0], torch_pos[1]):
-                chase_pos = torch_pos
+                tx, ty = torch_pos
+                dx, dy = tx - self.x, ty - self.y
+                dist = math.hypot(dx, dy)
+                keep_distance = self.attack_range  # Keep distance equal to attack circle
+                if dist < keep_distance:
+                    # Torch is inside attack circle, do not change position (allow torch to enter)
+                    chase_pos = (self.x, self.y)
+                else:
+                    # Only move towards the torch, never away, but keep attack_range distance
+                    if dist > keep_distance:
+                        chase_pos = (tx - dx / dist * keep_distance, ty - dy / dist * keep_distance)
+                    else:
+                        chase_pos = (self.x, self.y)
                 torch_in_range = True
+        # Check fairy visibility
+        if fairy is not None and hasattr(fairy, "x") and hasattr(fairy, "y") and self.sees_target(fairy.x, fairy.y):
+            # Keep a distance from the fairy (e.g., 80 pixels)
+            fx, fy = fairy.x, fairy.y
+            dx, dy = fx - self.x, fy - self.y
+            dist = math.hypot(dx, dy)
+            keep_distance = 80
+            if dist > keep_distance:
+                chase_pos = (fx, fy)
+            else:
+                # Stay at the edge of the keep_distance circle
+                if dist > 1:
+                    chase_pos = (fx - dx / dist * keep_distance, fy - dy / dist * keep_distance)
+                else:
+                    chase_pos = (self.x, self.y)
+            fairy_in_range = True
 
         # --- Idle movement logic ---
-        if not (player_in_range or torch_in_range):
+        if not (player_in_range or torch_in_range or fairy_in_range):
             # Update idle direction every second
             self.idle_timer += dt
             if self.idle_timer >= 1.0 or self.idle_dir == (0.0, 0.0):

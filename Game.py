@@ -125,6 +125,21 @@ class Game:
         # Add this before self.load_level(...)
         self.defeated_enemies_per_level = {}  # Track defeated enemies by level index
         self.initial_enemy_positions_per_level = {}  # Track initial enemy positions per level
+        # --- Skeleton walk animation frames ---
+        self.skeleton_walk_frames = [
+            pygame.transform.scale(
+                pygame.image.load(f"textures/NPC/skeleton/skeleton_walk{i}.png").convert_alpha(), (40, 60)
+            )
+            for i in range(1, 9)
+        ]
+        # --- Skeleton attack animation frames ---
+        self.skeleton_attack_frames = [
+            pygame.transform.scale(
+                pygame.image.load(f"textures/NPC/skeleton/skeleton_attack{i}.png").convert_alpha(), (40, 60)
+            )
+            for i in range(1, 9)
+        ]
+
         self.load_level(self.level_index, entry_door_idx=self.entry_door_idx)
         self.fireballs = []
         self.torch_on_ground = True
@@ -218,7 +233,9 @@ class Game:
             door_img_open=self.door_img_open,
             game_level=game_level,
             monster_level_min=monster_level_min,
-            monster_level_max=monster_level_max
+            monster_level_max=monster_level_max,
+            skeleton_walk_frames=self.skeleton_walk_frames,
+            skeleton_attack_frames=self.skeleton_attack_frames
         )
         self.fireballs = []
         self.enemy_bodies = []
