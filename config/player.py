@@ -2,6 +2,8 @@ import math
 import pygame
 from dataclasses import dataclass
 from config.mili import start_sword_swing, update_sword, draw_with_sword  # Import sword logic
+from config.config import world_to_screen
+
 
 class Item:
     def __init__(
@@ -120,7 +122,23 @@ class Player:
         update_sword(self, dt, sword_anim_len)
 
     def draw_with_sword(self, surf, px, py, player_img, sword_img, sword_slash_imgs):
+        # Shift player image and sword 18 pixels to the right
+        px += 18
         draw_with_sword(self, surf, px, py, player_img, sword_img, sword_slash_imgs)
+
+    def draw(self, surf, cam_x, cam_y, player_img=None, anim_frames=None):
+        # Draw player shifted 18 pixels to the right
+        px, py = world_to_screen(self.x, self.y, cam_x, cam_y)
+        px += 18
+        img = None
+        if anim_frames and self.anim_dir in anim_frames:
+            img_list = anim_frames[self.anim_dir]
+            if img_list:
+                img = img_list[self.anim_index % len(img_list)]
+        elif player_img:
+            img = player_img
+        if img:
+            surf.blit(img, (px - self.w // 2, py - self.h // 2))
 
     def rect(self) -> pygame.Rect:
         return pygame.Rect(int(self.x - self.w/2), int(self.y - self.h/2), self.w, self.h)
