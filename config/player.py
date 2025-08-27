@@ -3,6 +3,48 @@ import pygame
 from dataclasses import dataclass
 from config.mili import start_sword_swing, update_sword, draw_with_sword  # Import sword logic
 
+class Item:
+    def __init__(
+        self,
+        name,
+        item_type,      # e.g. "Main Hand", "Helmet", etc.
+        equip_slot,     # e.g. "Main Hand", "Helmet", etc.
+        item_class=None,# e.g. "melee", "range", "magic", "armor", "boots", "helmet", "accessory"
+        image=None,
+        attack_min=None,
+        attack_max=None,
+        attack_speed=None,
+        armor=None,
+        speed=None,
+        bonus=None,
+        level=1
+    ):
+        self.name = name
+        self.item_type = item_type      # e.g. "melee", "range", "magic", "armor", etc.
+        self.equip_slot = equip_slot    # e.g. "Main Hand", "Helmet", etc.
+        self.item_class = item_class    # e.g. "melee", "range", "magic", "armor", etc.
+        self.image = image
+        self.attack_min = attack_min
+        self.attack_max = attack_max
+        self.attack_speed = attack_speed
+        self.armor = armor
+        self.speed = speed
+        self.bonus = bonus
+        self.level = level
+
+    def get_slot(self):
+        # Returns the equipment slot name this item should go to
+        return self.equip_slot
+
+    def get_attack_damage(self):
+        if self.attack_min is not None and self.attack_max is not None:
+            import random
+            return random.randint(self.attack_min, self.attack_max)
+        return None
+
+    def get_attack_speed(self):
+        return self.attack_speed
+
 @dataclass
 class Player:
     x: float
@@ -39,6 +81,10 @@ class Player:
     max_xp: int = 10
     level: int = 1
     stat_points: int = 0
+    # Equipment slots
+    equipment: dict = None
+    # Inventory slots (list of items, None if empty)
+    inventory: list = None
 
     def __post_init__(self):
         # Scale stats
@@ -52,6 +98,20 @@ class Player:
         self.xp = 0
         self.max_xp = 10
         self.stat_points = 0
+        # Equipment: slot_name -> item (None if empty)
+        self.equipment = {
+            "Helmet": None,
+            "Armor": None,
+            "Main Hand": Item("Sword", "melee", "Main Hand", item_class="melee", attack_min=1, attack_max=5, attack_speed=1.2, level=1),
+            "Off Hand": None,
+            "Boots": None,
+            "Accessory 1": None,
+            "Accessory 2": None,
+            "Accessory 3": None,
+            "Accessory 4": None,
+        }
+        # Inventory: 5x8 grid (40 slots)
+        self.inventory = [None for _ in range(40)]
 
     def start_sword_swing(self):
         start_sword_swing(self)
@@ -153,7 +213,7 @@ class Player:
             self.xp -= self.max_xp
             self.level += 1
             self.max_xp = 10 * self.level
-            self.stat_points += 2  # Add 2 points per level up
+            self.stat_points += 4  # Add 4 points per level up
 
     def assign_stat(self, stat: str):
         if self.stat_points > 0:
