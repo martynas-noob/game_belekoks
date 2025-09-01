@@ -25,8 +25,8 @@ class Fireball:
     cost: int = 20  # Mana cost to cast fireball
 
     def __post_init__(self):
-        # Only randomize if not set
-        if self.damage == 0:
+        # Only randomize if not set or set to 0
+        if not self.damage or self.damage < 1:
             self.damage = random.randint(self.damage_min, self.damage_max)
 
     def rect(self) -> pygame.Rect:

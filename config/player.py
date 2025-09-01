@@ -19,7 +19,9 @@ class Item:
         armor=None,
         speed=None,
         bonus=None,
-        level=1
+        level=1,
+        magic_min=None,     # NEW: minimum magical damage
+        magic_max=None      # NEW: maximum magical damage
     ):
         self.name = name
         self.item_type = item_type      # e.g. "melee", "range", "magic", "armor", etc.
@@ -33,6 +35,8 @@ class Item:
         self.speed = speed
         self.bonus = bonus
         self.level = level
+        self.magic_min = magic_min
+        self.magic_max = magic_max
 
     def get_slot(self):
         # Returns the equipment slot name this item should go to
@@ -42,6 +46,13 @@ class Item:
         if self.attack_min is not None and self.attack_max is not None:
             import random
             return random.randint(self.attack_min, self.attack_max)
+        return None
+
+    def get_magic_damage(self):
+        # NEW: magical damage calculation, same formula as physical
+        if self.magic_min is not None and self.magic_max is not None:
+            import random
+            return random.randint(self.magic_min, self.magic_max)
         return None
 
     def get_attack_speed(self):
@@ -89,17 +100,8 @@ class Player:
     inventory: list = None
 
     def __post_init__(self):
-        # Scale stats
-        self.max_hp = self.vitality * 100
-        self.hp = self.max_hp
-        self.stamina = self.vitality * 20
-        self.speed = 180.0 + self.dexterity * 20  # base + dex scaling
-        self.max_mana = self.intelligence * 100
-        self.mana = self.max_mana
-        self.level = 1
-        self.xp = 0
-        self.max_xp = 10
-        self.stat_points = 0
+        # --- Scale stats by level ---
+        self.apply_level_scaling()
         # Equipment: slot_name -> item (None if empty)
         self.equipment = {
             "Helmet": None,
@@ -114,6 +116,25 @@ class Player:
         }
         # Inventory: 5x8 grid (40 slots)
         self.inventory = [None for _ in range(40)]
+
+    def apply_level_scaling(self):
+        # Scale all stats by 20% per level (level 1 = 1.0, level 2 = 1.2, etc.)
+        level_mult = 1 + 0.2 * (self.level - 1)
+        # Main stats
+        self.strength = int(self.strength * level_mult)
+        self.dexterity = int(self.dexterity * level_mult)
+        self.vitality = int(self.vitality * level_mult)
+        self.intelligence = int(self.intelligence * level_mult)
+        # Derived stats
+        self.max_hp = int(self.vitality * 100 * level_mult)
+        # Clamp hp to max_hp
+        self.hp = min(getattr(self, "hp", self.max_hp), self.max_hp)
+        # Clamp stamina to max stamina
+        self.max_stamina = int(self.vitality * 20 * level_mult)
+        self.stamina = min(getattr(self, "stamina", self.max_stamina), self.max_stamina)
+        self.speed = int(180.0 * level_mult + self.dexterity * 20 * level_mult)
+        self.max_mana = int(self.intelligence * 100 * level_mult)
+        self.mana = min(getattr(self, "mana", self.max_mana), self.max_mana)
 
     def start_sword_swing(self):
         start_sword_swing(self)
@@ -156,8 +177,10 @@ class Player:
         mag = math.hypot(dx, dy)
         if mag:
             dx, dy = dx/mag, dy/mag
+        # Only apply sprint multiplier if shift is pressed
         sprinting = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
-        return dx, dy, (self.sprint_mult if sprinting else 1.0)
+        move_mult = self.sprint_mult if sprinting else 1.0
+        return dx, dy, move_mult
 
     def move_and_collide(self, dt: float, solids: list[pygame.Rect]) -> None:
         keys = pygame.key.get_pressed()
@@ -232,6 +255,7 @@ class Player:
             self.level += 1
             self.max_xp = 10 * self.level
             self.stat_points += 4  # Add 4 points per level up
+            self.apply_level_scaling()  # Recalculate stats on level up
 
     def assign_stat(self, stat: str):
         if self.stat_points > 0:
@@ -246,18 +270,13 @@ class Player:
             else:
                 return
             self.stat_points -= 1
-            # Optionally update derived stats
-            self.max_hp = self.vitality * 100
-            self.hp = min(self.hp, self.max_hp)
-            self.stamina = self.vitality * 20
-            self.speed = 180.0 + self.dexterity * 20
-            self.max_mana = self.intelligence * 100
-            self.mana = min(self.mana, self.max_mana)
+            self.apply_level_scaling()  # Recalculate stats after stat assignment
 
     def update_regeneration(self, dt: float):
         # HP regeneration: 10 * vitality * (level * 0.2) per second
-        hp_regen = 10 * self.vitality * (self.level * 0.2)
-        mana_regen = 10 * self.intelligence * (self.level * 0.2)
+        level_mult = 1 + 0.2 * (self.level - 1)
+        hp_regen = 10 * self.vitality * level_mult
+        mana_regen = 10 * self.intelligence * level_mult
         if hp_regen > 0 and self.hp < self.max_hp:
             self.hp = min(self.max_hp, self.hp + hp_regen * dt)
         if mana_regen > 0 and self.mana < self.max_mana:

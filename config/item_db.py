@@ -26,6 +26,8 @@ ITEM_SWORD = {
     "attack_max": 5,
     "attack_speed": 1.2,
     "level": 1,
+    "magic_min": 0,   # magical damage
+    "magic_max": 0    # magical damage
 }
 
 # Magic weapon
@@ -39,6 +41,8 @@ ITEM_STAFF = {
     "attack_max": 7,
     "attack_speed": 1.0,
     "level": 1,
+    "magic_min": 3,   # magical damage
+    "magic_max": 8    # magical damage
 }
 
 # Range weapon
@@ -52,6 +56,8 @@ ITEM_BOW = {
     "attack_max": 4,
     "attack_speed": 1.5,
     "level": 1,
+    "magic_min": 0,   # magical damage
+    "magic_max": 0    # magical damage
 }
 
 # Helmet
