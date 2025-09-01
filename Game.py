@@ -436,7 +436,6 @@ class Game:
                                                 self.player.equipment[slot_name] = item
                                                 self.player.inventory[idx] = None
                                             else:
-                                                # Swap items
                                                 self.player.equipment[slot_name] = item
                                                 self.player.inventory[idx] = current_equipped
                                         # Do not allow placing item in wrong slot
@@ -685,7 +684,14 @@ class Game:
                     facing_left = dx < 0
                     fireball_cost = 20  # Match Fireball.cost default
                     if hasattr(self.player, "mana") and self.player.mana >= fireball_cost:
-                        fireball_damage = random.randint(self.player.intelligence * 10, self.player.intelligence * 10 + 9)
+                        weapon = self.player.equipment.get("Main Hand")
+                        weapon_magic = 1  # Default to 1 if not magic weapon
+                        if weapon is not None and hasattr(weapon, "get_magic_damage"):
+                            if getattr(weapon, "magic_min", 0) and getattr(weapon, "magic_max", 0):
+                                weapon_magic = weapon.get_magic_damage() or 1
+                        spell_damage = random.randint(self.player.intelligence * 10, self.player.intelligence * 10 + 9)
+                        fireball_damage = weapon_magic * spell_damage
+                        # Always pass fireball_damage as argument
                         fireball = Fireball(self.player.x, self.player.y, dx, dy, facing_left=facing_left, damage=fireball_damage, cost=fireball_cost)
                         self.fireballs.append(fireball)
                         self.player.mana -= fireball_cost
@@ -693,7 +699,6 @@ class Game:
                             self.player.mana = 0
                         self.cast_sound.play()
                     else:
-                        # Not enough mana, do nothing or show feedback
                         pass
 
             # --- Sword damage to targets and enemies ---
@@ -808,7 +813,7 @@ class Game:
                         if not fireball.exploding:
                             fireball.exploding = True
                             self.explosion_sound.play()
-                        damage = random.randint(10, 15)
+                        damage = fireball.damage  # <-- Use fireball's actual damage
                         if hasattr(enemy, "hit_points"):
                             enemy.hit_points -= damage
                             show_damage_numbers(self, enemy.x, enemy.y - 40, damage)
@@ -838,7 +843,7 @@ class Game:
                             if not fireball.exploding:
                                 fireball.exploding = True
                                 self.explosion_sound.play()
-                            damage = random.randint(10, 15)
+                            damage = fireball.damage  # <-- Use fireball's actual damage
                             target.hit_points -= damage
                             show_damage_numbers(self, target.x, target.y - 40, damage)
                             show_health_bar(self, target)

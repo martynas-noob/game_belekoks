@@ -352,17 +352,6 @@ def draw_inventory_overlay(game, tab_index=0):
 
         # --- Item stats hub ---
         if hovered_item is not None:
-            hub_w, hub_h = 320, 180
-            hub_x = mouse_x + 24
-            hub_y = mouse_y + 24
-            # Prevent hub from going off screen
-            if hub_x + hub_w > game.screen.get_width():
-                hub_x = game.screen.get_width() - hub_w - 16
-            if hub_y + hub_h > game.screen.get_height():
-                hub_y = game.screen.get_height() - hub_h - 16
-            hub_rect = pygame.Rect(hub_x, hub_y, hub_w, hub_h)
-            pygame.draw.rect(game.screen, (30, 30, 30), hub_rect, border_radius=14)
-            pygame.draw.rect(game.screen, (160, 160, 160), hub_rect, 3, border_radius=14)
             stat_font = pygame.font.SysFont("arial", 24, bold=True)
             lines = [
                 f"Name: {getattr(hovered_item, 'name', '')}",
@@ -374,11 +363,37 @@ def draw_inventory_overlay(game, tab_index=0):
                 lines.append(f"Attack: {hovered_item.attack_min} - {hovered_item.attack_max}")
             if hasattr(hovered_item, "attack_speed") and hovered_item.attack_speed is not None:
                 lines.append(f"Attack Speed: {hovered_item.attack_speed}")
-            # Add more stats here if needed
+            # Magic damage
+            if hasattr(hovered_item, "magic_min") and hasattr(hovered_item, "magic_max") and hovered_item.magic_min is not None and hovered_item.magic_max is not None:
+                if hovered_item.magic_min > 0 or hovered_item.magic_max > 0:
+                    lines.append(f"Magic Damage: {hovered_item.magic_min} - {hovered_item.magic_max}")
+            # Armor
+            if hasattr(hovered_item, "armor") and hovered_item.armor is not None and hovered_item.armor > 0:
+                lines.append(f"Armor: {hovered_item.armor}")
+            # Speed
+            if hasattr(hovered_item, "speed") and hovered_item.speed is not None and hovered_item.speed > 0:
+                lines.append(f"Speed: {hovered_item.speed}")
+            # Bonus
+            if hasattr(hovered_item, "bonus") and hovered_item.bonus:
+                lines.append(f"Bonus: {hovered_item.bonus}")
 
+            # --- Dynamic hub size ---
+            hub_w = 340
+            line_height = 32
+            hub_h = 32 + len(lines) * line_height + 16  # top/bottom padding
+            hub_x = mouse_x + 24
+            hub_y = mouse_y + 24
+            # Prevent hub from going off screen
+            if hub_x + hub_w > game.screen.get_width():
+                hub_x = game.screen.get_width() - hub_w - 16
+            if hub_y + hub_h > game.screen.get_height():
+                hub_y = game.screen.get_height() - hub_h - 16
+            hub_rect = pygame.Rect(hub_x, hub_y, hub_w, hub_h)
+            pygame.draw.rect(game.screen, (30, 30, 30), hub_rect, border_radius=14)
+            pygame.draw.rect(game.screen, (160, 160, 160), hub_rect, 3, border_radius=14)
             for i, line in enumerate(lines):
                 stat_surf = stat_font.render(line, True, (220, 220, 220))
-                game.screen.blit(stat_surf, (hub_x + 18, hub_y + 18 + i * 32))
+                game.screen.blit(stat_surf, (hub_x + 18, hub_y + 18 + i * line_height))
     elif tab_index == 1:
         # Stats tab
         title = font.render("PLAYER STATS", True, (255, 255, 255))
