@@ -16,6 +16,9 @@ def show_damage_numbers(game, x, y, value, color=(255, 80, 80), duration=1.0):
 def draw_damage_numbers(game, screen, camera, dt):
     font = pygame.font.SysFont("arial", 28, bold=True)
     for dmg in game.damage_numbers[:]:
+        # --- Only draw normal damage numbers, not "Level X required" messages ---
+        if isinstance(dmg.get("value", ""), str) and str(dmg.get("value", "")).startswith("Level "):
+            continue
         dmg["y"] -= 30 * dt  # float upward
         dmg["timer"] -= dt
         dmg["alpha"] = int(255 * (dmg["timer"] / dmg["duration"]))

@@ -103,3 +103,36 @@ ITEM_RING = {
     "bonus": "mana+20",
     "level": 1,
 }
+
+WEAPON_ITEMS = [ITEM_SWORD, ITEM_STAFF, ITEM_BOW]
+ARMOR_ITEMS = [ITEM_HELMET, ITEM_ARMOR, ITEM_BOOTS]
+ACCESSORY_ITEMS = [ITEM_RING]
+
+ITEM_GROUPS = {
+    "weapon": WEAPON_ITEMS,
+    "armor": ARMOR_ITEMS,
+    "accessory": ACCESSORY_ITEMS,
+}
+
+def scale_item_stats(item: dict, level: int) -> dict:
+    """Scale item stats by 1.2^level for damage, armor, speed, etc."""
+    scaled = dict(item)
+    level_mult = 1.2 ** (level - 1)
+    # Scale attack
+    if "attack_min" in scaled and scaled["attack_min"] is not None:
+        scaled["attack_min"] = int(scaled["attack_min"] * level_mult)
+    if "attack_max" in scaled and scaled["attack_max"] is not None:
+        scaled["attack_max"] = int(scaled["attack_max"] * level_mult)
+    # Scale magic
+    if "magic_min" in scaled and scaled["magic_min"] is not None:
+        scaled["magic_min"] = int(scaled["magic_min"] * level_mult)
+    if "magic_max" in scaled and scaled["magic_max"] is not None:
+        scaled["magic_max"] = int(scaled["magic_max"] * level_mult)
+    # Scale armor
+    if "armor" in scaled and scaled["armor"] is not None:
+        scaled["armor"] = int(scaled["armor"] * level_mult)
+    # Scale speed
+    if "speed" in scaled and scaled["speed"] is not None:
+        scaled["speed"] = int(scaled["speed"] * level_mult)
+    # You can add more scaling for other numeric attributes if needed
+    return scaled
