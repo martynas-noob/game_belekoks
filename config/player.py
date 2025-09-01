@@ -174,10 +174,7 @@ class Player:
             dy -= 1
         if keys[pygame.K_s] or keys[pygame.K_DOWN]:
             dy += 1
-        mag = math.hypot(dx, dy)
-        if mag:
-            dx, dy = dx/mag, dy/mag
-        # Only apply sprint multiplier if shift is pressed
+        # Do NOT normalize here, just return raw direction
         sprinting = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
         move_mult = self.sprint_mult if sprinting else 1.0
         return dx, dy, move_mult
@@ -185,28 +182,29 @@ class Player:
     def move_and_collide(self, dt: float, solids: list[pygame.Rect]) -> None:
         keys = pygame.key.get_pressed()
         dx, dy, mult = self.input_dir(keys)
+        mag = math.hypot(dx, dy)
+        if mag > 0:
+            dx /= mag
+            dy /= mag
+            # Clamp tiny values to zero
+            if abs(dx) < 1e-6: dx = 0.0
+            if abs(dy) < 1e-6: dy = 0.0
         step = self.speed * mult * dt
-        self.moving = (dx != 0 or dy != 0)
+        self.moving = (mag > 0)
+        # Save previous position for collision revert
+        prev_x, prev_y = self.x, self.y
         # X axis
         self.x += dx * step
         r = self.rect()
         for s in solids:
             if r.colliderect(s):
-                if dx > 0:
-                    r.right = s.left
-                elif dx < 0:
-                    r.left = s.right
-        self.x = r.centerx
+                self.x = prev_x  # revert only if collision
         # Y axis
         self.y += dy * step
         r = self.rect()
         for s in solids:
             if r.colliderect(s):
-                if dy > 0:
-                    r.bottom = s.top
-                elif dy < 0:
-                    r.top = s.bottom
-        self.y = r.centery
+                self.y = prev_y  # revert only if collision
 
     def update_animation(self, dt: float):
         if self.moving:

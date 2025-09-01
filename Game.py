@@ -141,6 +141,14 @@ class Game:
             item_var["equip_slot"] = slot
             if i < len(self.player.inventory):
                 self.player.inventory[i] = Item(**item_var)
+        # --- Add a random level 5 item for testing ---
+        from config.item_db import ITEM_GROUPS, scale_item_stats
+        import random
+        group = random.choice(list(ITEM_GROUPS.values()))
+        base_item = dict(random.choice(group))
+        base_item["level"] = 5
+        test_item = scale_item_stats(base_item, 5)
+        self.player.inventory[7] = Item(**test_item)
         self.camera = Camera()
         # Provide a list of enemy/target images to World
         self.enemy_imgs = [self.monster_img_original, self.monster_img_alt, self.monster_img_boss]
@@ -357,6 +365,7 @@ class Game:
         self.level_name_timer = 5.0  # Show level name for 5 seconds
         self.inventory_open = False  # <-- Add this line
         self.inventory_tab = 0  # 0=Inventory, 1=Stats, 2=Skills
+        self.dropped_items = []  # List of dropped items on ground
 
     def run(self):
         print("Game loop started")  # Debug: confirm loop starts
@@ -429,16 +438,29 @@ class Game:
                                     item = self.player.inventory[idx]
                                     if item is not None:
                                         slot_name = item.get_slot() if hasattr(item, "get_slot") else None
-                                        # Only allow placing item in its designated slot
                                         if slot_name and slot_name in self.player.equipment:
                                             current_equipped = self.player.equipment[slot_name]
+                                            # --- Only allow equipping if player level >= item level ---
+                                            if hasattr(item, "level") and self.player.level < item.level:
+                                                # Show message above item and fade away
+                                                msg_x = rect.centerx
+                                                msg_y = rect.top - 24
+                                                self.damage_numbers.append({
+                                                    "x": msg_x,
+                                                    "y": msg_y,
+                                                    "value": f"Level {item.level} required",
+                                                    "timer": 1.2,
+                                                    "alpha": 255,
+                                                    "color": (255, 80, 80),
+                                                    "duration": 1.2
+                                                })
+                                                break
                                             if current_equipped is None:
                                                 self.player.equipment[slot_name] = item
                                                 self.player.inventory[idx] = None
                                             else:
                                                 self.player.equipment[slot_name] = item
                                                 self.player.inventory[idx] = current_equipped
-                                        # Do not allow placing item in wrong slot
                                     break
                     elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.inventory_tab == 2:
                         mx, my = pygame.mouse.get_pos()
@@ -521,6 +543,13 @@ class Game:
 
             if self.inventory_open:
                 draw_inventory_overlay(self, self.inventory_tab)
+                # --- Fade "Level required" messages only in inventory overlay ---
+                for dmg in self.damage_numbers[:]:
+                    if isinstance(dmg.get("value", ""), str) and dmg.get("value", "").startswith("Level "):
+                        dmg["timer"] -= dt
+                        dmg["alpha"] = int(255 * (dmg["timer"] / dmg["duration"]))
+                        if dmg["timer"] <= 0:
+                            self.damage_numbers.remove(dmg)
                 continue  # Pause game updates while inventory is open
 
             # Regenerate HP and Mana each frame (only when not paused)
@@ -758,8 +787,22 @@ class Game:
                         self.slime_damage_sound.play()
                         if enemy.hit_points <= 0:
                             self.slime_death_sound.play()
-                            # Grant XP to player
                             self.player.add_xp(getattr(enemy, "xp_reward", 5))
+                            # --- Drop logic ---
+                            drop_items = None
+                            if hasattr(enemy, "get_drop"):
+                                drop_items = enemy.get_drop()
+                            if drop_items:
+                                # drop_items is now a list, not a dict
+                                for drop_item in drop_items:
+                                    item_visual = drop_item.get("image", None)
+                                    self.dropped_items.append({
+                                        "item_data": drop_item,
+                                        "x": enemy.x,
+                                        "y": enemy.y,
+                                        "image": item_visual,
+                                        "rect": pygame.Rect(int(enemy.x-24), int(enemy.y-24), 48, 48)
+                                    })
                             enemies_to_remove.add(i)
                             # --- Track defeated enemy by initial position ---
                             # Use initial positions from initial_enemy_positions_per_level
@@ -821,8 +864,21 @@ class Game:
                             self.slime_damage_sound.play()
                             if enemy.hit_points <= 0:
                                 self.slime_death_sound.play()
-                                # Grant XP to player
                                 self.player.add_xp(getattr(enemy, "xp_reward", 5))
+                                # --- Drop logic ---
+                                drop_items = None
+                                if hasattr(enemy, "get_drop"):
+                                    drop_items = enemy.get_drop()
+                                if drop_items:
+                                    for drop_item in drop_items:
+                                        item_visual = drop_item.get("image", None)
+                                        self.dropped_items.append({
+                                            "item_data": drop_item,
+                                            "x": enemy.x,
+                                            "y": enemy.y,
+                                            "image": item_visual,
+                                            "rect": pygame.Rect(int(enemy.x-24), int(enemy.y-24), 48, 48)
+                                        })
                                 enemies_to_remove.add(i)
                                 # --- Track defeated enemy by initial position ---
                                 initial_positions = self.initial_enemy_positions_per_level.get(self.level_index, [])
@@ -873,7 +929,47 @@ class Game:
 
             # --- DRAWING ---
             draw_game_frame(self, dt)
-
+            # --- Dropped item pickup logic ---
+            player_rect = self.player.rect()
+            for dropped in self.dropped_items[:]:
+                keys = pygame.key.get_pressed()
+                if player_rect.colliderect(dropped["rect"]) and keys[pygame.K_e]:
+                    # Find first empty inventory slot
+                    for idx in range(len(self.player.inventory)):
+                        if self.player.inventory[idx] is None:
+                            from config.player import Item
+                            self.player.inventory[idx] = Item(**dropped["item_data"])
+                            break
+                    self.dropped_items.remove(dropped)
+            # Draw dropped items on ground with a shining effect and pickup hint
+            for dropped in self.dropped_items:
+                px, py = world_to_screen(dropped["x"], dropped["y"], self.camera.x, self.camera.y)
+                # Draw item image if available
+                if dropped["image"]:
+                    img = pygame.transform.scale(dropped["image"], (40, 40))
+                    self.screen.blit(img, (px - 20, py - 20))
+                else:
+                    # Always draw a circle for dropped items if no image
+                    pygame.draw.circle(self.screen, (255, 215, 0), (px, py), 20)
+                # --- Shining effect ---
+                shine_radius = 28
+                shine_alpha = int(128 + 64 * math.sin(pygame.time.get_ticks() / 300.0 + px + py))
+                shine_surface = pygame.Surface((shine_radius*2, shine_radius*2), pygame.SRCALPHA)
+                pygame.draw.circle(shine_surface, (255, 255, 160, shine_alpha), (shine_radius, shine_radius), shine_radius)
+                self.screen.blit(shine_surface, (px - shine_radius, py - shine_radius), special_flags=pygame.BLEND_RGBA_ADD)
+                # --- Pickup hint ---
+                if player_rect.colliderect(dropped["rect"]):
+                    font = pygame.font.SysFont("arial", 22, bold=True)
+                    hint_surf = font.render("Press E to pick up", True, (255, 255, 160))
+                    # Draw hint just above the item
+                    self.screen.blit(hint_surf, (px - hint_surf.get_width() // 2, py - 44))
+                    # --- Draw fade message if present ---
+                    for dmg in self.damage_numbers:
+                        # Only check for string values before calling .startswith
+                        if isinstance(dmg.get("value", ""), str) and dmg.get("value", "").startswith("Level ") and abs(dmg["x"] - px) < 40 and abs(dmg["y"] - (py - 44)) < 40:
+                            msg_surf = font.render(str(dmg["value"]), True, dmg["color"])
+                            msg_surf.set_alpha(dmg["alpha"])
+                            self.screen.blit(msg_surf, (px - msg_surf.get_width() // 2, py - 72))
             # Remove all other drawing code from the main loop!
 
             mx, my = pygame.mouse.get_pos()

@@ -3,6 +3,35 @@ from dataclasses import dataclass
 import math
 import random
 from config.config import world_to_screen
+from config.item_db import ITEM_GROUPS
+
+
+def roll_drops(level, lowest_drop_level, weapon_drop_rate, armor_drop_rate, accessory_drop_rate):
+    import random
+    from config.item_db import ITEM_GROUPS, scale_item_stats
+    drops = []
+    # Weapon drop
+    if random.random() < weapon_drop_rate:
+        base_item = dict(random.choice(ITEM_GROUPS["weapon"]))
+        item_level = random.randint(lowest_drop_level, level)
+        base_item["level"] = item_level
+        item = scale_item_stats(base_item, item_level)
+        drops.append(item)
+    # Armor drop
+    if random.random() < armor_drop_rate:
+        base_item = dict(random.choice(ITEM_GROUPS["armor"]))
+        item_level = random.randint(lowest_drop_level, level)
+        base_item["level"] = item_level
+        item = scale_item_stats(base_item, item_level)
+        drops.append(item)
+    # Accessory drop
+    if random.random() < accessory_drop_rate:
+        base_item = dict(random.choice(ITEM_GROUPS["accessory"]))
+        item_level = random.randint(lowest_drop_level, level)
+        base_item["level"] = item_level
+        item = scale_item_stats(base_item, item_level)
+        drops.append(item)
+    return drops if drops else None
 
 
 @dataclass
@@ -38,6 +67,10 @@ class Enemy:
     idle_dir: tuple[float, float] = (0.0, 0.0)
     idle_timer: float = 0.0
     idle_speed: float = 60.0  # Slow idle speed
+    weapon_drop_rate: float = 0.05  # Default for slime
+    armor_drop_rate: float = 0.99
+    accessory_drop_rate: float = 0.99  # 2% default
+    lowest_drop_level: int = 1  # New: minimum item level for drops
 
     def draw_enemy(self) -> pygame.Rect:
         return pygame.Rect(int(self.x - self.w/2), int(self.y - self.h/2), self.w, self.h)
@@ -75,6 +108,16 @@ class Enemy:
         self.attack_damage = random.randint(self.strength * 10 * self.level, self.strength * 10 * self.level + 9)
         if not hasattr(self, "xp_reward") or self.xp_reward == 5:
             self.xp_reward = self.level * 5
+
+    def get_drop(self):
+        # Use shared drop logic for all monsters
+        return roll_drops(
+            self.level,
+            self.lowest_drop_level,
+            self.weapon_drop_rate,
+            self.armor_drop_rate,
+            self.accessory_drop_rate
+        )
 
     def update(self, dt: float, target_pos, solids: list[pygame.Rect], player_rect: pygame.Rect, other_enemies: list[pygame.Rect], player=None, fairy=None):
         if self.cooldown > 0:

@@ -15,6 +15,10 @@ class Skeleton(Enemy):
     player_was_close: bool = False
     torch_buffer_timer: float = 0.0
     torch_last_chase_pos: tuple = None
+    weapon_drop_rate: float = 0.99  # Set high for testing
+    armor_drop_rate: float = 0.10
+    accessory_drop_rate: float = 0.02
+    lowest_drop_level: int = 2  # Skeletons drop items of at least level 2
 
     def __post_init__(self):
         # Make skeleton 40% bigger
@@ -35,6 +39,11 @@ class Skeleton(Enemy):
         self.attack_damage = 12 * self.level
         self.xp_reward = self.level * 7
         self.attacking = False
+        # Make sure to set drop rates correctly for testing
+        self.weapon_drop_rate = 0.99
+        self.armor_drop_rate = 0.20
+        self.accessory_drop_rate = 0.01
+        self.lowest_drop_level = 2  # Or set dynamically based on skeleton type/level
 
     def start_attack(self):
         self.attacking = True

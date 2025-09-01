@@ -180,7 +180,23 @@ def draw_game_frame(game, dt):
         sword_hitbox = pygame.Rect(int(sword_px), int(sword_py), sword_w, sword_h)
         pygame.draw.rect(game.screen, (255, 0, 0), sword_hitbox, 2)
 
+    # --- Draw dropped items on ground ---
+    for dropped in getattr(game, "dropped_items", []):
+        px, py = world_to_screen(dropped["x"], dropped["y"], game.camera.x, game.camera.y)
+        if dropped["image"]:
+            img = pygame.transform.scale(dropped["image"], (40, 40))
+            game.screen.blit(img, (px - 20, py - 20))
+        else:
+            pygame.draw.circle(game.screen, (255, 215, 0), (px, py), 20)
+
     # --- Overlays/effects ---
+    # Only draw damage numbers that are NOT "Level X required" messages
+    from config.combat import draw_damage_numbers
+    font = pygame.font.SysFont("arial", 22, bold=True)
+    for dmg in game.damage_numbers[:]:
+        if isinstance(dmg.get("value", ""), str) and dmg.get("value", "").startswith("Level "):
+            continue  # Skip "Level X required" messages here
+        # ...existing code for drawing normal damage numbers...
     draw_damage_numbers(game, game.screen, game.camera, dt)
     draw_health_bars(game, game.screen, game.camera)
     update_health_bars(game, dt)
@@ -347,6 +363,18 @@ def draw_inventory_overlay(game, tab_index=0):
         game._equip_slot_rects = slot_rects
         game._inv_slot_rects = inv_rects
 
+        # --- Draw "Level required" fade messages above inventory slots ---
+        font = pygame.font.SysFont("arial", 22, bold=True)
+        for dmg in game.damage_numbers[:]:
+            # Only show "Level X required" messages in inventory overlay
+            if isinstance(dmg.get("value", ""), str) and dmg.get("value", "").startswith("Level "):
+                for rect in game._inv_slot_rects:
+                    if abs(dmg["x"] - rect.centerx) < 24 and abs(dmg["y"] - (rect.top - 24)) < 24:
+                        msg_surf = font.render(str(dmg["value"]), True, dmg["color"])
+                        msg_surf.set_alpha(dmg["alpha"])
+                        game.screen.blit(msg_surf, (rect.centerx - msg_surf.get_width() // 2, rect.top - 48))
+                        break
+
         inv_text = inv_font.render("Click equipment/inventory slots to move items.", True, (220, 220, 220))
         game.screen.blit(inv_text, (right_x - inv_text.get_width() // 2, grid_start_y + inv_rows * (inv_slot_size + inv_gap) + 32))
 
@@ -481,6 +509,11 @@ def draw_inventory_overlay(game, tab_index=0):
     # --- Instructions ---
     hint_font = pygame.font.SysFont("arial", 24)
     hint = hint_font.render("Press I or Tab to close | ←/→ or 1/2/3 to switch tabs", True, (180, 180, 180))
+    game.screen.blit(hint, (game.screen.get_width() // 2 - hint.get_width() // 2, game.screen.get_height() - 80))
+    pygame.display.flip()
+    hint = hint_font.render("Press I or Tab to close | ←/→ or 1/2/3 to switch tabs", True, (180, 180, 180))
+    game.screen.blit(hint, (game.screen.get_width() // 2 - hint.get_width() // 2, game.screen.get_height() - 80))
+    pygame.display.flip()
     game.screen.blit(hint, (game.screen.get_width() // 2 - hint.get_width() // 2, game.screen.get_height() - 80))
     pygame.display.flip()
     hint = hint_font.render("Press I or Tab to close | ←/→ or 1/2/3 to switch tabs", True, (180, 180, 180))
