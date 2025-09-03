@@ -249,12 +249,23 @@ def draw_inventory_overlay(game, tab_index=0):
     tab_h = 48
     tab_y = 40
     tab_x_start = game.screen.get_width() // 2 - tab_w * len(tab_names) // 2
+    tab_rects = []
     for i, name in enumerate(tab_names):
         tab_x = tab_x_start + i * tab_w
         color = (255, 215, 0) if i == tab_index else (120, 120, 120)
-        pygame.draw.rect(game.screen, color, (tab_x, tab_y, tab_w, tab_h), border_radius=12)
+        rect = pygame.Rect(tab_x, tab_y, tab_w, tab_h)
+        tab_rects.append(rect)
+        pygame.draw.rect(game.screen, color, rect, border_radius=12)
         tab_text = tab_font.render(name, True, (0, 0, 0))
         game.screen.blit(tab_text, (tab_x + tab_w // 2 - tab_text.get_width() // 2, tab_y + tab_h // 2 - tab_text.get_height() // 2))
+
+    # --- Tab click detection ---
+    mx, my = pygame.mouse.get_pos()
+    mouse_pressed = pygame.mouse.get_pressed()
+    if mouse_pressed[0]:  # Left mouse button
+        for i, rect in enumerate(tab_rects):
+            if rect.collidepoint(mx, my):
+                game.inventory_tab = i
 
     # --- Tab content ---
     if tab_index == 0:
@@ -330,7 +341,7 @@ def draw_inventory_overlay(game, tab_index=0):
                 if rect.collidepoint(mouse_x, mouse_y):
                     hovered_item = item
 
-        # Inventory grid (right side)
+        # --- Draw inventory grid (right side) ---
         inv_cols, inv_rows = 5, 8
         inv_slot_size = 56
         inv_gap = 12
@@ -348,6 +359,8 @@ def draw_inventory_overlay(game, tab_index=0):
                 pygame.draw.rect(game.screen, (120, 120, 120), rect, 2, border_radius=8)
                 item = game.player.inventory[idx]
                 if item is not None:
+                    if game.dragged_item is not None and game.dragged_item_idx == idx:
+                        continue  # Don't draw item in slot if dragging
                     if hasattr(item, "image") and item.image:
                         item_img = pygame.transform.scale(item.image, (inv_slot_size - 12, inv_slot_size - 12))
                         game.screen.blit(item_img, (sx + (inv_slot_size - item_img.get_width()) // 2, sy + (inv_slot_size - item_img.get_height()) // 2))
@@ -363,11 +376,18 @@ def draw_inventory_overlay(game, tab_index=0):
         game._equip_slot_rects = slot_rects
         game._inv_slot_rects = inv_rects
 
-        # --- Draw "Level required" fade messages above inventory slots ---
+        # --- Draw "Level required" fade messages above equipment slots ---
         font = pygame.font.SysFont("arial", 22, bold=True)
         for dmg in game.damage_numbers[:]:
-            # Only show "Level X required" messages in inventory overlay
             if isinstance(dmg.get("value", ""), str) and dmg.get("value", "").startswith("Level "):
+                # Check equipment slots
+                for rect in game._equip_slot_rects.values():
+                    if abs(dmg["x"] - rect.centerx) < 24 and abs(dmg["y"] - (rect.top - 24)) < 24:
+                        msg_surf = font.render(str(dmg["value"]), True, dmg["color"])
+                        msg_surf.set_alpha(dmg["alpha"])
+                        game.screen.blit(msg_surf, (rect.centerx - msg_surf.get_width() // 2, rect.top - 48))
+                        break
+                # Check inventory slots (keep previous logic)
                 for rect in game._inv_slot_rects:
                     if abs(dmg["x"] - rect.centerx) < 24 and abs(dmg["y"] - (rect.top - 24)) < 24:
                         msg_surf = font.render(str(dmg["value"]), True, dmg["color"])
