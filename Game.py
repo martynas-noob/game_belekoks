@@ -366,6 +366,9 @@ class Game:
         self.inventory_open = False  # <-- Add this line
         self.inventory_tab = 0  # 0=Inventory, 1=Stats, 2=Skills
         self.dropped_items = []  # List of dropped items on ground
+        self.dragged_item = None
+        self.dragged_item_idx = None
+        self.dragged_item_rect = None
 
     def run(self):
         print("Game loop started")  # Debug: confirm loop starts
@@ -373,6 +376,7 @@ class Game:
         game_over = False
         next_level_triggered = False  # Add this flag to prevent multiple triggers per frame
         last_door_idx = None  # Track which door was last used
+        # --- Main event loop ---
         while running:
             dt = self.clock.tick(FPS) / 1000.0
             shoot_fireball = False
@@ -388,11 +392,17 @@ class Game:
                 game_over = True
 
             for e in pygame.event.get():
+                # --- DEBUG: Print all mouse events ---
+                if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                    print(f"DEBUG: Mouse event type={e.type}, button={getattr(e, 'button', None)}, pos={pygame.mouse.get_pos()}")
                 if e.type == pygame.QUIT:
                     running = False
                 elif self.inventory_open:
+                    # --- DEBUG: Print mouse events in inventory ---
+                    if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+                        print(f"INVENTORY DEBUG: type={e.type}, button={getattr(e, 'button', None)}, tab={self.inventory_tab}, pos={pygame.mouse.get_pos()}")
                     if e.type == pygame.KEYDOWN:
-                        if e.key in (pygame.K_i, pygame.K_TAB):
+                        if e.key in (pygame.K_i, pygame.K_TAB, pygame.K_ESCAPE):
                             self.inventory_open = False
                         elif e.key in (pygame.K_LEFT, pygame.K_a):
                             self.inventory_tab = (self.inventory_tab - 1) % 3
@@ -418,31 +428,44 @@ class Game:
                                 break
                     elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.inventory_tab == 0:
                         mx, my = pygame.mouse.get_pos()
-                        # Equipment slots
-                        if hasattr(self, "_equip_slot_rects"):
-                            for slot_name, rect in self._equip_slot_rects.items():
-                                if rect.collidepoint(mx, my):
-                                    item = self.player.equipment.get(slot_name)
-                                    if item is not None:
-                                        # Find first empty inventory slot
-                                        for idx in range(len(self.player.inventory)):
-                                            if self.player.inventory[idx] is None:
-                                                self.player.inventory[idx] = item
-                                                self.player.equipment[slot_name] = None
-                                                break
-                                    break
-                        # Inventory slots
+                        # Start dragging if left-click on inventory slot or equipment slot
                         if hasattr(self, "_inv_slot_rects"):
                             for idx, rect in enumerate(self._inv_slot_rects):
                                 if rect.collidepoint(mx, my):
                                     item = self.player.inventory[idx]
                                     if item is not None:
-                                        slot_name = item.get_slot() if hasattr(item, "get_slot") else None
-                                        if slot_name and slot_name in self.player.equipment:
-                                            current_equipped = self.player.equipment[slot_name]
-                                            # --- Only allow equipping if player level >= item level ---
+                                        self.dragged_item = item
+                                        self.dragged_item_idx = idx
+                                        self.dragged_item_rect = rect
+                                    break
+                        # Equipment slots: allow dragging equipped items
+                        if hasattr(self, "_equip_slot_rects"):
+                            for slot_name, rect in self._equip_slot_rects.items():
+                                if rect.collidepoint(mx, my):
+                                    item = self.player.equipment.get(slot_name)
+                                    if item is not None:
+                                        self.dragged_item = item
+                                        self.dragged_item_idx = slot_name  # Use slot name for equipment
+                                        self.dragged_item_rect = rect
+                                    break
+                    elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 3 and self.inventory_tab == 0:
+                        mx, my = pygame.mouse.get_pos()
+                        # Right-click: instant equip from inventory to equipment
+                        if hasattr(self, "_inv_slot_rects"):
+                            for idx, rect in enumerate(self._inv_slot_rects):
+                                if rect.collidepoint(mx, my):
+                                    item = self.player.inventory[idx]
+                                    if item is not None:
+                                        # Fix: use item.get_slot() for Item objects
+                                        slot = item.get_slot() if hasattr(item, "get_slot") else None
+                                        target_slot = None
+                                        for slot_name in self.player.equipment:
+                                            if _slot_matches(item, slot_name):
+                                                target_slot = slot_name
+                                                break
+                                        if target_slot:
+                                            equip_rect = self._equip_slot_rects[target_slot]
                                             if hasattr(item, "level") and self.player.level < item.level:
-                                                # Show message above item and fade away
                                                 msg_x = rect.centerx
                                                 msg_y = rect.top - 24
                                                 self.damage_numbers.append({
@@ -455,26 +478,137 @@ class Game:
                                                     "duration": 1.2
                                                 })
                                                 break
-                                            if current_equipped is None:
-                                                self.player.equipment[slot_name] = item
-                                                self.player.inventory[idx] = None
-                                            else:
-                                                self.player.equipment[slot_name] = item
-                                                self.player.inventory[idx] = current_equipped
+                                            current_equipped = self.player.equipment.get(target_slot)
+                                            self.player.equipment[target_slot] = item
+                                            self.player.inventory[idx] = None
+                                            if current_equipped is not None and current_equipped != item:
+                                                for empty_idx in range(len(self.player.inventory)):
+                                                    if self.player.inventory[empty_idx] is None:
+                                                        self.player.inventory[empty_idx] = current_equipped
+                                                        break
                                     break
-                    elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.inventory_tab == 2:
+                        # Right-click: instant unequip from equipment to inventory
+                        if hasattr(self, "_equip_slot_rects"):
+                            for slot_name, rect in self._equip_slot_rects.items():
+                                if rect.collidepoint(mx, my):
+                                    item = self.player.equipment.get(slot_name)
+                                    if item is not None:
+                                        # Find first empty inventory slot
+                                        for idx in range(len(self.player.inventory)):
+                                            if self.player.inventory[idx] is None:
+                                                self.player.inventory[idx] = item
+                                                self.player.equipment[slot_name] = None
+                                                break
+                                    break
+                    elif e.type == pygame.MOUSEBUTTONUP and self.inventory_tab == 0:
                         mx, my = pygame.mouse.get_pos()
-                        # Centered and spaced buttons
-                        btn_w, btn_h = 32, 32
-                        btn_x = self.screen.get_width() // 2 + 180
-                        btn_y_start = 220 + 11 * 40
-                        skill_names = ["Fireball", "Ice Shard", "Lightning Bolt"]
-                        for i, skill in enumerate(skill_names):
-                            btn_rect = pygame.Rect(btn_x, btn_y_start + i * 56, btn_w, btn_h)
-                            if btn_rect.collidepoint(mx, my):
-                                # Unlock and assign the skill to the player
-                                self.player.unlock_skill(skill)
-                                break
+                        # Drag-and-drop logic
+                        if self.dragged_item is not None:
+                            dropped = False
+                            # If dragging from inventory
+                            if isinstance(self.dragged_item_idx, int):
+                                # Drop on inventory slot: swap items
+                                if hasattr(self, "_inv_slot_rects"):
+                                    for idx, rect in enumerate(self._inv_slot_rects):
+                                        if rect.collidepoint(mx, my):
+                                            if idx != self.dragged_item_idx:
+                                                self.player.inventory[self.dragged_item_idx], self.player.inventory[idx] = self.player.inventory[idx], self.player.inventory[self.dragged_item_idx]
+                                            dropped = True
+                                            break
+                                # Drop on equipment slot: equip if allowed, else show "Level required" message
+                                if not dropped and hasattr(self, "_equip_slot_rects"):
+                                    for slot_name, rect in self._equip_slot_rects.items():
+                                        if rect.collidepoint(mx, my):
+                                            item = self.dragged_item
+                                            # Show "Level required" message if not allowed
+                                            if hasattr(item, "level") and self.player.level < item.level:
+                                                msg_x = rect.centerx
+                                                msg_y = rect.top - 24
+                                                self.damage_numbers.append({
+                                                    "x": msg_x,
+                                                    "y": msg_y,
+                                                    "value": f"Level {item.level} required",
+                                                    "timer": 1.2,
+                                                    "alpha": 255,
+                                                    "color": (255, 80, 80),
+                                                    "duration": 1.2
+                                                })
+                                                dropped = True
+                                                break
+                                            # Equip only if slot matches item's equip_slot (including accessories)
+                                            if _slot_matches(item, slot_name):
+                                                current_equipped = self.player.equipment.get(slot_name)
+                                                self.player.equipment[slot_name] = item
+                                                self.player.inventory[self.dragged_item_idx] = None
+                                                if current_equipped is not None:
+                                                    for idx2 in range(len(self.player.inventory)):
+                                                        if self.player.inventory[idx2] is None:
+                                                            self.player.inventory[idx2] = current_equipped
+                                                            break
+                                                dropped = True
+                                                break
+                                            dropped = True  # If slot does not match, just return item to inventory
+                                            break
+                            # If dragging from equipment
+                            elif isinstance(self.dragged_item_idx, str):
+                                # Drop on inventory slot: move equipped item to inventory slot (swap if occupied)
+                                if hasattr(self, "_inv_slot_rects"):
+                                    for idx, rect in enumerate(self._inv_slot_rects):
+                                        if rect.collidepoint(mx, my):
+                                            inv_item = self.player.inventory[idx]
+                                            self.player.inventory[idx] = self.dragged_item
+                                            self.player.equipment[self.dragged_item_idx] = inv_item
+                                            dropped = True
+                                            break
+                                # Drop on another equipment slot: swap equipment if slot matches (including accessories)
+                                if not dropped and hasattr(self, "_equip_slot_rects"):
+                                    for slot_name, rect in self._equip_slot_rects.items():
+                                        if rect.collidepoint(mx, my):
+                                            item = self.dragged_item
+                                            # Show "Level required" message if not allowed
+                                            if hasattr(item, "level") and self.player.level < item.level:
+                                                msg_x = rect.centerx
+                                                msg_y = rect.top - 24
+                                                self.damage_numbers.append({
+                                                    "x": msg_x,
+                                                    "y": msg_y,
+                                                    "value": f"Level {item.level} required",
+                                                    "timer": 1.2,
+                                                    "alpha": 255,
+                                                    "color": (255, 80, 80),
+                                                    "duration": 1.2
+                                                })
+                                                dropped = True
+                                                break
+                                            if _slot_matches(item, slot_name):
+                                                other_item = self.player.equipment.get(slot_name)
+                                                self.player.equipment[slot_name] = item
+                                                self.player.equipment[self.dragged_item_idx] = other_item
+                                                dropped = True
+                                                break
+                                            dropped = True  # If slot does not match, just return item to original slot
+                                            break
+                            # --- Drop zone logic (lower third + 80px) ---
+                            drop_zone_w, drop_zone_h = 420, 180
+                            drop_zone_x = self.screen.get_width() // 2 - drop_zone_w // 2
+                            drop_zone_y = int(self.screen.get_height() * 2 / 3 - drop_zone_h // 2 + 80)
+                            drop_zone_rect = pygame.Rect(drop_zone_x, drop_zone_y, drop_zone_w, drop_zone_h)
+                            if not dropped and drop_zone_rect.collidepoint(mx, my):
+                                # Remove item from inventory or equipment
+                                if isinstance(self.dragged_item_idx, int):
+                                    self.player.inventory[self.dragged_item_idx] = None
+                                elif isinstance(self.dragged_item_idx, str):
+                                    self.player.equipment[self.dragged_item_idx] = None
+                                dropped = True
+                            # Drop outside: return item to original slot
+                            if not dropped:
+                                if isinstance(self.dragged_item_idx, int):
+                                    self.player.inventory[self.dragged_item_idx] = self.dragged_item
+                                elif isinstance(self.dragged_item_idx, str):
+                                    self.player.equipment[self.dragged_item_idx] = self.dragged_item
+                            self.dragged_item = None
+                            self.dragged_item_idx = None
+                            self.dragged_item_rect = None
                 elif game_over:
                     if e.type == pygame.KEYDOWN:
                         if e.key == pygame.K_ESCAPE:
@@ -543,6 +677,40 @@ class Game:
 
             if self.inventory_open:
                 draw_inventory_overlay(self, self.inventory_tab)
+                # --- Draw dragged item if any ---
+                if self.dragged_item is not None and self.dragged_item_rect is not None:
+                    mx, my = pygame.mouse.get_pos()
+                    slot_size = self.dragged_item_rect.width
+                    if hasattr(self.dragged_item, "image") and self.dragged_item.image:
+                        item_img = pygame.transform.scale(self.dragged_item.image, (slot_size - 12, slot_size - 12))
+                        self.screen.blit(item_img, (mx - (slot_size - 12) // 2, my - (slot_size - 12) // 2))
+                    else:
+                        pygame.draw.circle(self.screen, (200, 200, 80), (mx, my), slot_size // 3)
+                    # --- Draw drop zone (lower by extra 80 pixels) ---
+                    drop_zone_w, drop_zone_h = 420, 180
+                    drop_zone_x = self.screen.get_width() // 2 - drop_zone_w // 2
+                    drop_zone_y = int(self.screen.get_height() * 2 / 3 - drop_zone_h // 2 + 80)
+                    drop_zone_rect = pygame.Rect(drop_zone_x, drop_zone_y, drop_zone_w, drop_zone_h)
+                    pygame.draw.rect(self.screen, (180, 180, 180), drop_zone_rect, border_radius=24)
+                    dash_color = (120, 120, 120)
+                    dash_len = 18
+                    gap_len = 10
+                    # Top edge
+                    for x in range(drop_zone_x, drop_zone_x + drop_zone_w, dash_len + gap_len):
+                        pygame.draw.line(self.screen, dash_color, (x, drop_zone_y), (min(x + dash_len, drop_zone_x + drop_zone_w), drop_zone_y), 3)
+                    # Bottom edge
+                    for x in range(drop_zone_x, drop_zone_x + drop_zone_w, dash_len + gap_len):
+                        pygame.draw.line(self.screen, dash_color, (x, drop_zone_y + drop_zone_h), (min(x + dash_len, drop_zone_x + drop_zone_w), drop_zone_y + drop_zone_h), 3)
+                    # Left edge
+                    for y in range(drop_zone_y, drop_zone_y + drop_zone_h, dash_len + gap_len):
+                        pygame.draw.line(self.screen, dash_color, (drop_zone_x, y), (drop_zone_x, min(y + dash_len, drop_zone_y + drop_zone_h)), 3)
+                    # Right edge
+                    for y in range(drop_zone_y, drop_zone_y + drop_zone_h, dash_len + gap_len):
+                        pygame.draw.line(self.screen, dash_color, (drop_zone_x + drop_zone_w, y), (drop_zone_x + drop_zone_w, min(y + dash_len, drop_zone_y + drop_zone_h)), 3)
+                    font = pygame.font.SysFont("arial", 36, bold=True)
+                    drop_text = font.render("Drop Item Here", True, (60, 60, 60))
+                    self.screen.blit(drop_text, (drop_zone_x + drop_zone_w // 2 - drop_text.get_width() // 2,
+                                                 drop_zone_y + drop_zone_h // 2 - drop_text.get_height() // 2))
                 # --- Fade "Level required" messages only in inventory overlay ---
                 for dmg in self.damage_numbers[:]:
                     if isinstance(dmg.get("value", ""), str) and dmg.get("value", "").startswith("Level "):
@@ -609,6 +777,15 @@ class Game:
                 pygame.display.flip()
 
                 # After animation, actually change level
+                if elapsed >= self.door_transition_duration:
+                    if direction == "back":
+                        prev_level_index = self.prev_level_index
+                        prev_level_layout = getattr(game_config, self.level_keys[prev_level_index])
+                        prev_doors = []
+                        for y, row in enumerate(prev_level_layout):
+                            for x, ch in enumerate(row):
+                                if ch == '7':
+                                    prev_doors.append((x * 48 + 24, y * 48 + 36))
                 if elapsed >= self.door_transition_duration:
                     if direction == "back":
                         prev_level_index = self.prev_level_index
@@ -1124,6 +1301,18 @@ class Game:
             dist = math.hypot(self.player.x - torch_center[0], self.player.y - torch_center[1])
             return dist < 100  # Considered near if within 100 pixels
         return False
+
+def _slot_matches(item, slot_name):
+    # Helper: allow "Accessory N" items to go to any "Accessory N" slot
+    slot = item.get_slot() if hasattr(item, "get_slot") else None
+    if slot is None:
+        return False
+    if slot == slot_name:
+        return True
+    # Allow "Accessory N" items to go to any "Accessory" slot
+    if slot.startswith("Accessory") and slot_name.startswith("Accessory"):
+        return True
+    return False
 
 if __name__ == "__main__":
     Game().run()

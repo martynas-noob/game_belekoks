@@ -99,8 +99,18 @@ class Player:
     # Inventory slots (list of items, None if empty)
     inventory: list = None
 
+    # --- Track base stats for scaling ---
+    base_strength: int = 1
+    base_dexterity: int = 1
+    base_vitality: int = 1
+    base_intelligence: int = 1
+
     def __post_init__(self):
-        # --- Scale stats by level ---
+        # Save base stats for scaling
+        self.base_strength = self.strength
+        self.base_dexterity = self.dexterity
+        self.base_vitality = self.vitality
+        self.base_intelligence = self.intelligence
         self.apply_level_scaling()
         # Equipment: slot_name -> item (None if empty)
         self.equipment = {
@@ -118,23 +128,37 @@ class Player:
         self.inventory = [None for _ in range(40)]
 
     def apply_level_scaling(self):
-        # Scale all stats by 20% per level (level 1 = 1.0, level 2 = 1.2, etc.)
+        # Scale only base stats by level, stat_points are added after scaling
         level_mult = 1 + 0.2 * (self.level - 1)
-        # Main stats
-        self.strength = int(self.strength * level_mult)
-        self.dexterity = int(self.dexterity * level_mult)
-        self.vitality = int(self.vitality * level_mult)
-        self.intelligence = int(self.intelligence * level_mult)
+        self.strength = int(self.base_strength * level_mult) + self.stat_points_for("strength")
+        self.dexterity = int(self.base_dexterity * level_mult) + self.stat_points_for("dexterity")
+        self.vitality = int(self.base_vitality * level_mult) + self.stat_points_for("vitality")
+        self.intelligence = int(self.base_intelligence * level_mult) + self.stat_points_for("intelligence")
         # Derived stats
-        self.max_hp = int(self.vitality * 100 * level_mult)
-        # Clamp hp to max_hp
+        self.max_hp = int(self.vitality * 100)
         self.hp = min(getattr(self, "hp", self.max_hp), self.max_hp)
-        # Clamp stamina to max stamina
-        self.max_stamina = int(self.vitality * 20 * level_mult)
+        self.max_stamina = int(self.vitality * 20)
         self.stamina = min(getattr(self, "stamina", self.max_stamina), self.max_stamina)
-        self.speed = int(180.0 * level_mult + self.dexterity * 20 * level_mult)
-        self.max_mana = int(self.intelligence * 100 * level_mult)
+        self.speed = 180.0 + self.dexterity * 20
+        self.max_mana = int(self.intelligence * 100)
         self.mana = min(getattr(self, "mana", self.max_mana), self.max_mana)
+
+    def stat_points_for(self, stat):
+        # Return assigned stat points for each stat
+        if hasattr(self, "assigned_stat_points") and stat in self.assigned_stat_points:
+            return self.assigned_stat_points[stat]
+        return 0
+
+    def assign_stat(self, stat: str):
+        if self.stat_points > 0:
+            # Track assigned stat points per stat
+            if not hasattr(self, "assigned_stat_points"):
+                self.assigned_stat_points = {"strength": 0, "dexterity": 0, "vitality": 0, "intelligence": 0}
+            if stat in self.assigned_stat_points:
+                self.assigned_stat_points[stat] += 1
+                self.stat_points -= 1
+                # Recalculate stats with assigned points
+                self.apply_level_scaling()
 
     def start_sword_swing(self):
         start_sword_swing(self)
@@ -255,21 +279,6 @@ class Player:
             self.stat_points += 4  # Add 4 points per level up
             self.apply_level_scaling()  # Recalculate stats on level up
 
-    def assign_stat(self, stat: str):
-        if self.stat_points > 0:
-            if stat == "strength":
-                self.strength += 1
-            elif stat == "dexterity":
-                self.dexterity += 1
-            elif stat == "vitality":
-                self.vitality += 1
-            elif stat == "intelligence":
-                self.intelligence += 1
-            else:
-                return
-            self.stat_points -= 1
-            self.apply_level_scaling()  # Recalculate stats after stat assignment
-
     def update_regeneration(self, dt: float):
         # HP regeneration: 10 * vitality * (level * 0.2) per second
         level_mult = 1 + 0.2 * (self.level - 1)
@@ -279,3 +288,12 @@ class Player:
             self.hp = min(self.max_hp, self.hp + hp_regen * dt)
         if mana_regen > 0 and self.mana < self.max_mana:
             self.mana = min(self.max_mana, self.mana + mana_regen * dt)
+            self.mana = min(self.max_mana, self.mana + mana_regen * dt)
+
+    def get_total_armor(self):
+        # Sum armor from all equipped items
+        total_armor = 0
+        for item in self.equipment.values():
+            if item and hasattr(item, "armor") and item.armor:
+                total_armor += item.armor
+        return total_armor

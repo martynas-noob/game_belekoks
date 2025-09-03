@@ -35,7 +35,8 @@ class Skeleton(Enemy):
         self.max_hp = self.vitality * 100 * self.level
         self.hit_points = self.max_hp
         self.stamina = self.vitality * 20 * self.level
-        self.speed = 180.0 + self.dexterity * 20 * self.level
+        # Remove speed scaling with level
+        self.speed = 180.0 + self.dexterity * 20  # No level scaling
         self.attack_damage = 12 * self.level
         self.xp_reward = self.level * 7
         self.attacking = False
@@ -122,10 +123,16 @@ class Skeleton(Enemy):
                 dodge_chance = min(0.5, player.dexterity * 0.03)
                 if random.random() > dodge_chance:
                     if hasattr(player, "hp"):
-                        attack_damage = random.randint(self.strength * 10, self.strength * 10 + 9)
-                        player.hp -= attack_damage
+                        # --- Skeleton damage scales with level and strength ---
+                        min_dmg = self.strength * self.level * 10
+                        max_dmg = self.strength * self.level * 10 + 9
+                        attack_damage = random.randint(min_dmg, max_dmg)
+                        # --- Armor reduction ---
+                        armor = player.get_total_armor() if hasattr(player, "get_total_armor") else 0
+                        final_damage = max(0, attack_damage - armor)
+                        player.hp -= final_damage
                         from config.combat import show_damage_numbers
-                        show_damage_numbers(player.game_ref, player.x, player.y - 40, attack_damage, color=(255, 255, 255))
+                        show_damage_numbers(player.game_ref, player.x, player.y - 40, final_damage, color=(255, 255, 255))
                 self.attack_timer = self.attack_cooldown
             else:
                 if hasattr(self, "attack_timer"):
